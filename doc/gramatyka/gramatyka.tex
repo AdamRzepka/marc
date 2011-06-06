@@ -1,0 +1,290 @@
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: t
+%%% End: 
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{polski}
+\usepackage[utf8]{inputenc} 
+\usepackage{hyperref}
+\usepackage{listings}
+
+ \newenvironment{zenumerate}{\newcounter{zitem}\setcounter{zitem}{0}}
+ {}
+ \newcommand\zitem{\refstepcounter{zitem}\thezitem}
+
+\title{Kompilator języka bazującego na C do języka asemblera ARMa}
+\author{
+  Adam Rzepka\\
+  Informatyka Stosowana\\
+  III rok\\
+  nr albumu: 219977
+}
+\date{\today}
+
+\begin{document}
+\maketitle
+\newpage
+\section{Wstęp}
+W dokumencie została zaprezentowana gramatyka, która będzie wykorzystana do generowania parsera podzbioru języka C, przy użyciu biblioteki cl-yacc (język Common Lisp). Gramatyka ta nie obsługuje słów kluczowych:
+\begin{itemize}
+\item struct,
+\item typedef,
+\item union,
+\item enum,
+\item auto, 
+\item register,
+\item static,
+\item extern,
+\item const,
+\item volatile,
+\end{itemize}
+oraz operatorów:
+\begin{itemize}
+\item ?:
+\item -$>$
+\item .
+\item +=, -= itp.
+\end{itemize}
+Z uwagi na to, że preprocesor będzie zaimplementowany osobno, gramatyka nie uwzględnia również jego dyrektyw i makr.
+Projekt będzie rozwijany jako praca inżynierska, dlatego z czasem zostaną dodane brakujące elementy języka, jak również kilka nowych funkcjonalności.
+\newpage
+\section{Opis tokenów}
+
+\begin{zenumerate}
+\begin{tabular}{|p{1cm}|l|p{7cm}|}
+  \hline
+  LP & Nazwa & Opis \\
+  \hline \hline
+  \zitem\label{first} & char & char \\
+  \zitem & do & do \\
+  \zitem & double & double \\
+  \zitem & else & else \\
+  \zitem & float & float \\
+  \zitem & for & for \\
+  \zitem & if & if \\
+  \zitem & int & int \\
+  \zitem & long & long \\
+  \zitem & return & return \\
+  \zitem & short & short \\
+  \zitem & sizeof & sizeof \\
+  \zitem & void & void \\
+  \zitem & while & while \\
+
+  \zitem & identifier & [A-Za-z\_][A-Za-z0-9\_]* \\
+  \zitem & constant & [0-9]+[uUlL]? \\
+  \zitem & constant & 0[0-7]+[uUlL]? \\
+  \zitem & constant & (0x$|$0X)[0-9A-Fa-f]+[uUlL]? \\
+  \zitem & constant & [0-9]+.[0-9]*([eE][+-]?[0-9]+)?[fFlL]? \\
+  \zitem & constant & [0-9]*.[0-9]+([eE][+-]?[0-9]+)?[fFlL]? \\
+  \zitem & constant & [0-9]+[eE][+-]?[0-9]+)[fFlL]? \\
+  \zitem & constant & L?'([\textasciicircum$\backslash \backslash$']$|$$\backslash \backslash$')+' \\
+  \zitem & string &  L?"([\textasciicircum$\backslash \backslash$"]|$|$$\backslash \backslash$")+" \\
+
+  \zitem & $>>$ & $>>$ \\
+  \zitem & $<<$ & $<<$ \\
+  \zitem & ++ & ++ \\
+  \zitem & -- & -- \\
+  \hline
+\end{tabular}
+\newpage
+\begin{tabular}{|p{1cm}|l|p{7cm}|}
+  \hline
+  \zitem & $\backslash\&\backslash\&$ & \&\& \\
+  \zitem & $\backslash|\backslash|$ & $||$ \\
+  \zitem & $<=$ & $<=$ \\
+  \zitem & $>=$ & $>=$ \\
+  \zitem & $==$ & $==$ \\
+  \zitem & $!=$ & $!=$ \\
+  \zitem & $\backslash$; & ; \\
+  \zitem & \{ & \{ \\
+  \zitem & \} & \} \\
+  \zitem & , & , \\
+  \zitem & = & = \\
+  \zitem & $\backslash$( & ( \\
+  \zitem & $\backslash$) & ) \\
+  \zitem & [ & [ \\
+  \zitem & ] & ] \\
+  \zitem & . & . \\
+  \zitem & $\backslash\&$ & \& \\
+  \zitem & ! & ! \\
+  \zitem & $\sim$ & $\sim$ \\
+  \zitem & - & - \\
+  \zitem & + & + \\
+  \zitem & * & *  \\
+  \zitem & / & / \\
+  \zitem & \% & \% \\
+  \zitem & $<$ & $<$ \\
+  \zitem & $>$ & $>$ \\
+  \zitem & \textasciicircum & \textasciicircum \\
+  \zitem & $\backslash$$|$ & $|$ \\
+  \hline
+    
+\end{tabular}
+\end{zenumerate}
+
+\section{Gramatyka}
+\begin{lstlisting}
+
+;; cl-yacc parser
+(yacc:define-parser *c-parser*
+  (:start-symbol file)
+  (:terminals (double do else float for if int long return 
+	      short sizeof void while identifier constant
+	      string << >> ++ -- \&\& \|\| <= >= == != \; { }
+	      \, = \( \) [ ] ! ~ - + * / % < > ^ \|))
+  ;; Zdefiniowanie priorytetow i lacznosci operatorow
+  ;; pozwala zredukowac ilosc produkcji
+  (:precedence ((:left * / %) (:left + -) (:left << >>)
+               (:left < > <= >=) (:left == !=) (:left &)
+               (:left ^) (:left \|) (:left \&\&) (:left \|\|)
+               (:right =) (:left \,) (:nonassoc if else)))
+
+  (file 
+    (declaration \;)
+    (file declaration \;)
+    function
+    (file function))
+  
+  (declaration
+    (type var-init-list))
+  
+  (var-init-list
+    (var-init-list \, pointer-declarator = initializer)
+    (pointer-declarator = initializer)
+    (var-init-list \, pointer-declarator)
+    pointer-declarator)
+  
+  (pointer-declarator
+    declarator
+    (pointer declarator))
+  
+  (declarator
+    identifier
+    (\( declarator \))
+    (declarator [ expression ])
+    (declarator [ ] )
+    (declarator \( param-list \)))
+  
+  (pointer
+    *
+    (pointer *))
+  
+  (initializer
+    ({ initializer-list })
+    expression)
+  
+  (initializer-list
+    (initializer-list \, initializer))
+  
+  (function
+    (type pointer-declarator \( param-list \) block))
+  
+  (type 
+    double
+    float
+    int
+    long
+    short
+    void)
+  
+  (param-list
+    (param-list \, declaration)
+    (declaration))
+  
+  (block
+    ({ })
+    ({ instruction-list })
+    ({ declaration-list })
+    ({ declaration-list instruction-list }))
+  
+  (declaration-list
+    declaration
+    (declaration-list declaration))
+  
+  (instruction-list
+    (instruction-list instruction)
+    instruction)
+  
+  (instruction
+    block
+    (expression-instr)
+    conditional
+    loop)
+  
+  (expression-instr
+    \;
+    (expression \;))
+  
+  ;; Pomimo, iz ponizsza produkcja wprowadza niejednoznacznosc,
+  ;; jest ona dopuszczalna, dzieki zdefiniowaniu priorytetow
+  ;; operatorow.
+  (expression
+    cast-expression
+    (expression * expression)
+    (expression / expression)
+    (expression % expression)
+    (expression << expression)
+    (expression >> expression)
+    (expression > expression)
+    (expression < expression)
+    (expression >= expression)
+    (expression <= expression)
+    (expression == expression)
+    (expression != expression)
+    (expression & expression)
+    (expression ^ expression)
+    (expression \| expression)
+    (expression \&\& expression)
+    (expression \|\| expression)
+    (unary-expression = expression)
+    (expression \, expression))
+  
+  (cast-expression
+    unary-expression
+    (\( type \) cast-expression))
+  
+  (unary-expression
+    postfix-expression
+    (++ unary-expression)
+    (-- unary-expression)
+    (+ cast-expression)
+    (- cast-expression)
+    (* cast-expression)
+    (& cast-expression)
+    (! cast-expression)
+    (~ cast-expression)
+    (sizeof unary-expressiion)
+    (sizeof \( lvalue \)))
+  
+  (postfix-expression
+    (postfix-expression \( arument-list \))
+    (postfix-expression \( \))
+    (postfix-expression [ expression ])
+    (postfix-expression ++)
+    (postfix-expression --)
+    (highest-expression))
+    
+  (argument-list
+    expression
+    (argument-list \, expression))
+  
+  (highest-expression
+    identifier
+    constant
+    string-literal
+    (\( expression \)))
+    
+  (conditional
+    (if \( expression \) instruction else instruction)
+    (if \( expression \) instruction))
+    
+  (repeat
+    (for \( expression-instr expression-instr expression \) instruction)
+    (for \( expression-instr expression-instr \) instruction)
+    (while \( expression \) instruction)
+    (do instruction while \( expression \))))
+
+\end{lstlisting}
+\end{document}
