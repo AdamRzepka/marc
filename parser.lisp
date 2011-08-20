@@ -1,5 +1,4 @@
-(defpackage :c-compiler 
-	    (:use :yacc :cl-lex :cl-ppcre))
+(in-package :c-compiler)
 
 (defun quote-nonalpha (token)
   (coerce (loop for c across token
@@ -16,13 +15,18 @@
 
 (defmacro create-c-lexer (name)
   `(define-string-lexer ,name
-					;slowa kluczowe i operatory
-       ,@(loop for op in (append (car +tokens+) (cadr +tokens+))
+
+					; komentarze
+     ("//[^$]*")
+     ("/\\*(\\.|[^\\*])*\\*/")
+
+					; slowa kluczowe i operatory
+     ,@(loop for op in (append (car +tokens+) (cadr +tokens+))
 	    collecting `(,(quote-nonalpha (string-downcase (string op))) 
 			  (return (values ',op ',op))))
      ("[A-Za-z_]\\w*" (return (values 'identifier 
 				      (intern (regex-replace-all "_" $@ "-")))))
-					;literaly liczbowe i znakowe
+					; literaly liczbowe i znakowe
      ,@(loop for pattern in '("\\d+[uUlL]?" "0[0-7]+[uUlL]?" "0x|X[0-9A-Fa-f]+[uUlL]?"
 			      "\\d+\\.\\d*([eE][+-]?\\d+)?[fFlL]?"
 			      "\\d*\\.\\d+([eE][+-]?\\d+)?[fFlF]?" 
@@ -91,7 +95,8 @@
     (\( declarator \))
     (declarator [ expression ])
     (declarator [ ] )
-    (declarator \( param-list \)))
+    (declarator \( param-list \))
+    (declarator \( \)))
   
   (pointer
     *
@@ -105,8 +110,8 @@
     (initializer-list \, initializer))
   
   (function
-    (type pointer-declarator \( param-list \) block)
-    (type pointer-declarator \( \) block))
+    (type pointer-declarator block)
+    (type pointer-declarator block))
   
   (type 
     char
@@ -213,3 +218,7 @@
     (for \( expression-instr expression-instr \) instruction)
     (while \( expression \) instruction)
     (do instruction while \( expression \))))
+
+(defun parse-file (stream)
+  (create-c-lexer c-lexer)
+  (parse-with-lexer (c-stream-lexer stream #'c-lexer) *c-parser*))
