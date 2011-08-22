@@ -9,16 +9,15 @@
 ;; Tokeny podzielone na 3 kategorie - 
 (defconstant +tokens+ '((char double do else float for if int long return 
 			 short sizeof void while)
-			(<= >= == != \; { } \, = \( \) [ ] ! ~ - + * /
-			 % < > ^ \|)
+			(<= >= == != \; { } \, = \( \) [ ] ! ~ -- ++ - + * /
+			 % < > ^ \|\| \&\& \| \&)
 			(identifier constant string)))
 
 (defmacro create-c-lexer (name)
   `(define-string-lexer ,name
 
 					; komentarze
-     ("//[^$]*")
-     ("/\\*(\\.|[^\\*])*\\*/")
+     ("/\\*(\\*[^/]|[^\\*])*\\*/")
 
 					; slowa kluczowe i operatory
      ,@(loop for op in (append (car +tokens+) (cadr +tokens+))
@@ -34,26 +33,30 @@
 			      "L?'(\\.|[^\\'])+'")
 	  collecting `(,pattern (return (values 'constant 
 						(read-from-string $@)))))
-     ("L?\"(\\.|[^\\\"])*\"" (return (values 'string (intern $@))))))
+     ("L?\"(\\.|[^\\\"])*\"" (return (values 'string (intern $@))))
+					; biale znaki
+     ("\\s")))
 
 (defun c-stream-lexer (stream lexer-fun)
-  (flet ((reload-closure (stream) 
-	   (let ((line (read-line stream nil)))
-	     (if (null line)
-		 nil
-		 (funcall lexer-fun line)))))
+  (labels ((reload-closure (stream) 
+	     (let ((line (read-line stream nil)))
+	       (if (null line)
+		   nil
+		   (funcall lexer-fun line)))))
     (let ((lexer-closure (reload-closure stream)))
-      (lambda ()
-	(if lexer-closure
-	    (multiple-value-bind (token value) (funcall lexer-closure)
-	      (if (null token)
-		  (progn
-		    (setf lexer-closure (reload-closure stream))
-		    (if (null lexer-closure)
-			(values nil nil)
-			(funcall lexer-closure)))
-		  (values token value)))
-	    nil)))))
+      (labels ((get-nonempty-token ()
+		 (multiple-value-bind (token value) (funcall lexer-closure)
+		   (if (null token)
+		       (progn
+			 (setf lexer-closure (reload-closure stream))
+			 (if (null lexer-closure)
+			     (values nil nil)
+			     (get-nonempty-token)))
+		       (values token value)))))
+	(lambda ()
+	  (if lexer-closure
+	      (get-nonempty-token)
+	      nil))))))
 
 
 ;; cl-yacc parser
@@ -72,11 +75,14 @@
                (:right =) (:left \,) (:nonassoc if else)))
 
   (file 
-    (declaration \;)
-    (file declaration \;)
+    (declaration-line)
+    (file declaration-line)
     function
     (file function))
   
+  (declaration-line
+    (declaration \;))
+
   (declaration
     (type var-init-list))
   
@@ -133,8 +139,8 @@
     ({ declaration-list instruction-list }))
   
   (declaration-list
-    declaration
-    (declaration-list declaration))
+    declaration-line
+    (declaration-list declaration-line))
   
   (instruction-list
     (instruction-list instruction)
@@ -144,7 +150,9 @@
     block
     (expression-instr)
     conditional
-    loop)
+    loop
+    (return expression \;)
+    (return \;))
   
   (expression-instr
     \;
@@ -158,6 +166,8 @@
     (expression * expression)
     (expression / expression)
     (expression % expression)
+    (expression + expression)
+    (expression - expression)
     (expression << expression)
     (expression >> expression)
     (expression > expression)
@@ -219,6 +229,14 @@
     (while \( expression \) instruction)
     (do instruction while \( expression \))))
 
-(defun parse-file (stream)
+(defun read-file (path)
+  (with-open-file (is path :direction :input)
+    (with-output-to-string (os)
+      (let (c)
+	(loop do (setf c (read-char is nil))
+	   while c
+	   do (write-char c os))))))
+
+(defun parse-file (path)
   (create-c-lexer c-lexer)
-  (parse-with-lexer (c-stream-lexer stream #'c-lexer) *c-parser*))
+  (parse-with-lexer (c-lexer (read-file path)) *c-parser*))
