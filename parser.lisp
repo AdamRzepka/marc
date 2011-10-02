@@ -81,28 +81,30 @@
     (file function))
   
   (declaration-line
-    (declaration \;))
+    (declaration \; (lambda (a b) a)))
 
   (declaration
-    (type var-init-list))
+    (type var-init-list #'set-type))
   
   (var-init-list
-    (var-init-list \, pointer-declarator = initializer)
-    (pointer-declarator = initializer)
-    (var-init-list \, pointer-declarator)
-    pointer-declarator)
+    (var-init-list \, var-init #'skip-and-append)
+    var-init)
   
+  (var-init
+    (pointer-declarator = initializer)
+    (pointer-declarator))
+
   (pointer-declarator
     declarator
-    (pointer declarator))
+    (pointer declarator (lambda (pointer declarator) declarator)))
   
   (declarator
-    identifier
+    (identifier (lambda (identifier) (make-symbol-info :name identifier))) 
     (\( declarator \))
     (declarator [ expression ])
     (declarator [ ] )
-    (declarator \( param-list \))
-    (declarator \( \)))
+    (declarator \( param-list \) #'set-function)
+    (declarator \( \) #'set-function))
   
   (pointer
     *
@@ -116,8 +118,7 @@
     (initializer-list \, initializer))
   
   (function
-    (type pointer-declarator block)
-    (type pointer-declarator block))
+    (type pointer-declarator block #'gen-function))
   
   (type 
     char
@@ -129,8 +130,11 @@
     void)
   
   (param-list
-    (param-list \, declaration)
-    declaration)
+    (param-list \, parameter #'skip-and-append)
+    parameter)
+
+  (parameter
+    (type var-init #'set-type))
   
   (block
     ({ })
@@ -163,26 +167,28 @@
   ;; operatorow.
   (expression
     cast-expression
-    (expression * expression)
-    (expression / expression)
-    (expression % expression)
-    (expression + expression)
-    (expression - expression)
-    (expression << expression)
-    (expression >> expression)
-    (expression > expression)
-    (expression < expression)
-    (expression >= expression)
-    (expression <= expression)
-    (expression == expression)
-    (expression != expression)
-    (expression & expression)
-    (expression ^ expression)
-    (expression \| expression)
-    (expression \&\& expression)
-    (expression \|\| expression)
-    (unary-expression = expression)
-    (expression \, expression))
+    (expression * expression #'to-onp)
+    (expression / expression #'to-onp)
+    (expression % expression #'to-onp)
+    (expression + expression #'to-onp)
+    (expression - expression #'to-onp)
+    (expression << expression #'to-onp)
+    (expression >> expression #'to-onp)
+    (expression > expression #'to-onp)
+    (expression < expression #'to-onp)
+    (expression >= expression #'to-onp)
+    (expression <= expression #'to-onp)
+    (expression == expression #'to-onp)
+    (expression != expression #'to-onp)
+    (expression & expression #'to-onp)
+    (expression ^ expression #'to-onp)
+    (expression \| expression #'to-onp)
+    (expression \&\& expression #'to-onp)
+    (expression \|\| expression #'to-onp)
+    (unary-expression = expression 
+		      (lambda (a b c)
+			(append c '(=) a (list b))))
+    (expression \, expression #'to-onp))
   
   (cast-expression
     unary-expression
@@ -190,34 +196,42 @@
   
   (unary-expression
     postfix-expression
-    (++ unary-expression)
-    (-- unary-expression)
-    (+ cast-expression)
-    (- cast-expression)
-    (* cast-expression)
-    (& cast-expression)
-    (! cast-expression)
-    (~ cast-expression)
-    (sizeof unary-expressiion)
-    (sizeof \( lvalue \)))
+    (++ unary-expression #'swap)
+    (-- unary-expression #'swap)
+    (+ cast-expression (lambda (a b) b))
+    (- cast-expression (lambda (a b) (append b (list 'un-))))
+    (* cast-expression (lambda (a b) (append b (list 'un*))))
+    (& cast-expression (lambda (a b) (append b (list 'un&))))
+    (! cast-expression #'swap)
+    (~ cast-expression #'swap)
+    (sizeof unary-expressiion #'swap)
+    (sizeof \( lvalue \) (lambda (a b c d) 
+			   (append c (list a)))))
   
   (postfix-expression
-    (postfix-expression \( arument-list \))
-    (postfix-expression \( \))
-    (postfix-expression [ expression ])
-    (postfix-expression ++)
-    (postfix-expression --)
-    (highest-expression))
+    (postfix-expression \( expression \) 
+			(lambda (a b c d) 
+			  (append c a (list '|()|))))
+    (postfix-expression \( \) (lambda (a b c) 
+				(append a (list '|()|))))
+    (postfix-expression [ expression ] 
+			(lambda (a b c d) 
+			  (append c a (list '+ 'un*))))
+    (postfix-expression ++ (lambda (a b) 
+			     (append a (list 'post++))))
+    (postfix-expression -- (lambda (a b) 
+			     (append a (list 'post--))))
+    highest-expression)
     
-  (argument-list
+  #|(argument-list
     expression
-    (argument-list \, expression))
+    (argument-list \, expression #'skip-and-append))|#
   
   (highest-expression
-    identifier
-    constant
-    string-literal
-    (\( expression \)))
+    (identifier (lambda (name) (list 'symbol name)))
+    (constant (lambda (value) (list 'constant value)))
+    (string-literal (lambda (string) (list 'string string)))
+    (\( expression \) (lambda (a b c) b)))
     
   (conditional
     (if \( expression \) instruction else instruction)
@@ -227,7 +241,7 @@
     (for \( expression-instr expression-instr expression \) instruction)
     (for \( expression-instr expression-instr \) instruction)
     (while \( expression \) instruction)
-    (do instruction while \( expression \))))
+    (do instruction while \( expression \) \;)))
 
 (defun read-file (path)
   (with-open-file (is path :direction :input)

@@ -29,8 +29,22 @@
 (defun gen-function-header (type pointer-declarator)
   )
 
-(defun gen-stack-variables (block)
-  )
-(defun gen-function (type pointer-declarator block)
-  `((|.type| |nazwa,| |%function|) ))
+(defun gen-stack-variables (block &optional fun-args)
+  block)
+(defun gen-function (type symbol block)
+  (setf (symbol-info-type symbol) type)
+  (let ((fun-name (symbol-info-name symbol)))
+    `(,symbol
+      (|.global| ,fun-name)
+      (|.type| ,fun-name |%function|)
+      (,fun-name \:)
+      ,(gen-stack-variables block))))
 
+(defun to-onp (a op b)
+  (append a b (list op)))
+
+(defun swap (a b)
+  (append b (list a)))
+
+(defun gen-expression (onp-expr level)
+  )
