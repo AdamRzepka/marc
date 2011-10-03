@@ -46,5 +46,109 @@
 (defun swap (a b)
   (append b (list a)))
 
-(defun gen-expression (onp-expr level)
-  )
+(defun symbol-concat (a b)
+  (intern 
+   (concatenate 'string
+		(string a)
+		(string b))))
+
+(defun gen-register (level)
+  (symbolicate 'r (write-to-string level)))
+
+(defun gen-symbol (onp-expr level)
+  `((,(case (caddr onp-expr)
+	    ('= 'address)
+	    ('un* 'address)
+	    ('un& 'address)
+	    ('-- 'address)
+	    ('++ 'address)
+	    ('post++ 'address)
+	    ('post-- 'address)
+	    ('|()| 'function)
+	    (otherwise 'load))
+      ,(cadr onp-expr) \,
+      ,(gen-register level))))
+
+(defun gen-constant (onp-expr level)
+  `((mov ,(gen-register level) \,
+	 ,(symbolicate '\# (write-to-string
+			    (cadr onp-expr))))))
+
+(defun gen-+ (onp-expr level)
+  `((add ,(gen-register (- level 2)) \, 
+	 ,(gen-register (- level 2)) \,
+	 ,(gen-register (1- level)))))
+
+(defun gen-- (onp-expr level)
+  `((sub ,(gen-register (- level 2)) \, 
+	 ,(gen-register (- level 2)) \,
+	 ,(gen-register (1- level)))))
+
+(defun gen-* (onp-expr level)
+  `((mul ,(gen-register (- level 2)) \, 
+	 ,(gen-register (- level 2)) \,
+	 ,(gen-register (1- level)))))
+
+(defun gen-= (onp-expr level)
+  `((str ,(gen-register (- level 2)) \,
+	 ,(symbolicate '[ 
+		       (gen-register (1- level)) 
+		       '|, #0]|))))
+
+#|(defun gen-== (onp-expr level)
+  `((cmp ,(gen-register (- level 2)) \, 
+	 ,(gen-register (1- level)))
+    (moveq ,(gen-register (- level 2)) \, #1)
+    (movne ,(gen-register (- level 2)) \, #0))) |#
+
+(defmacro gen-cmp (cmp-symbol cmp-suffix n-cmp-suffix)
+  `(defun ,(symbolicate 'gen- cmp-symbol) (onp-expr level)
+     (list (list 'cmp (gen-register (- level 2)) '\, 
+		 (gen-register (1- level)))
+	   (list ',(symbolicate 'mov cmp-suffix)
+	    (gen-register (- level 2)) '\, '|#1|)
+	   (list ',(symbolicate 'mov n-cmp-suffix)
+	    (gen-register (- level 2)) '\, '|#0|))))
+
+(gen-cmp == eq ne)
+(gen-cmp != ne eq)
+(gen-cmp < lt ge)
+(gen-cmp > gt le)
+(gen-cmp <= le gt)
+(gen-cmp >= ge lt)
+
+(defmacro expr-types (onp-expr types level)
+  `(let ((next-expr (car ,onp-expr)))
+     (case next-expr
+       ,@(loop for type in types
+	      collecting
+	      `(',(car type) 
+		(append 
+		 (,(symbolicate 'gen- (car type)) 
+		   ,onp-expr ,level)
+		 (gen-expression* (cdr ,onp-expr)
+				  (+ ,level ,(cadr type))))))
+       (otherwise (gen-expression* (cdr ,onp-expr) ,level)))))
+
+(defun gen-expression* (onp-expr level)
+  (when onp-expr
+    (expr-types onp-expr 
+		((symbol 1) (constant 1) (+ -1) (- -1) (* -1)
+		 (= -1) (== -1) (!= -1) (< -1) (> -1) (<= -1)
+		 (>= -1)) 
+		level)))
+
+(defun gen-expression (expression)
+  (gen-expression* expression 0))
+
+(defun gen-if (expression instr-if &optional instr-else)
+  (let ((label1 (gensym "L"))
+	(label2 (gensym "L")))
+    (append (gen-expression expression)
+	    `((cmp r0 \, |#0|)
+	      (beq ,label1))
+	    instr-if
+	    (when instr-else `((b ,label2)))
+	    `((,(symbolicate label1 ":")))
+	    instr-else
+	    (when instr-else `((,(symbolicate label2 ":")))))))

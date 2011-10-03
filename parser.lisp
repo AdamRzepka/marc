@@ -160,7 +160,8 @@
   
   (expression-instr
     \;
-    (expression \;))
+    (expression \; (lambda (expression s) 
+		     (gen-expression expression))))
   
   ;; Pomimo, iz ponizsza produkcja wprowadza niejednoznacznosc,
   ;; jest ona dopuszczalna, dzieki zdefiniowaniu priorytetow
@@ -187,7 +188,7 @@
     (expression \|\| expression #'to-onp)
     (unary-expression = expression 
 		      (lambda (a b c)
-			(append c '(=) a (list b))))
+			(append c a (list b))))
     (expression \, expression #'to-onp))
   
   (cast-expression
@@ -234,8 +235,12 @@
     (\( expression \) (lambda (a b c) b)))
     
   (conditional
-    (if \( expression \) instruction else instruction)
-    (if \( expression \) instruction))
+    (if \( expression \) instruction else instruction
+	(lambda (t1 t2 expression t3 instr-if t4 instr-else)
+	  (gen-if expression instr-if instr-else)))
+    (if \( expression \) instruction
+	(lambda (t1 t2 expression t3 instr-if)
+	  (gen-if expression instr-if instr-else))))
     
   (repeat
     (for \( expression-instr expression-instr expression \) instruction)
