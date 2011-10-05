@@ -43,7 +43,7 @@ list, then a list returning just new-element is returned."
   (symbolicate '|[fp, #-| (write-to-string offset) '|]|))
 
 (defun gen-register (level)
-  (symbolicate 'r (write-to-string level)))
+  (symbolicate '|r| (write-to-string level)))
 
 (defun get-register-num (register)
   (read-from-string (subseq (string register) 1)))
@@ -58,8 +58,11 @@ list, then a list returning just new-element is returned."
 	   (let ((variable (find-variable 
 			    (cadr line) variables)))
 	     (if variable
-		 `(sub ,(cadddr line) \, fp \, 
-		       ,(symbol-info-address variable))
+		 `(sub ,(cadddr line) \, |fp| \, 
+		       ,(symbolicate 
+			 '\# 
+			 (write-to-string
+			  (symbol-info-address variable))))
 		 line)))
 	 (substitute-load (line)
 	   (let ((variable (find-variable
@@ -101,9 +104,12 @@ list, then a list returning just new-element is returned."
        for i from 1
        do (setf (symbol-info-address var) (* 4 i)))
     (append
-     `((str fp \, |[sp, #-4]!|)
-       (mov fp \, sp)
-       (sub sp \, sp \, ,(* 4 (length variables)))
+     `((str |fp| \, |[sp, #-4]!|)
+       (mov |fp| \, |sp|)
+       (sub |sp| \, |sp| \, ,(symbolicate 
+			  '\# 
+			  (write-to-string 
+			   (* 4 (length variables)))))
        ,@(loop for arg in variables
 	    for i from 1 to (length fun-args)
 	    collecting `(str 
@@ -113,16 +119,17 @@ list, then a list returning just new-element is returned."
 				       (* 4 i)) 
 				      '|]|))))
      (substitute-stack-variables variables instructions)
-     '((mov sp \, fp)
-       (ldmfd sp \, {fp})))))
+     '((mov |sp| \, |fp|)
+       (ldmfd |sp| \, |{fp}|)))))
 
 (defun gen-function (type symbol block)
   (setf (symbol-info-type symbol) type)
   (let ((fun-name (symbol-info-name symbol)))
     `((,symbol)
-      ((|.global| ,fun-name)
+      ((|.text|)
+       (|.global| ,fun-name)
        (|.type| ,fun-name |%function|)
-       (,fun-name \:)
+       (,(symbolicate fun-name '\:))
        (stmfd |sp| \, |{r4-r10,lr}|)
        ,@(gen-block block 
 		    (symbol-info-args symbol))
@@ -247,7 +254,7 @@ list, then a list returning just new-element is returned."
   (let ((label1 (gensym "L"))
 	(label2 (gensym "L")))
     (append (gen-expression expression)
-	    `((cmp r0 \, |#0|)
+	    `((cmp |r0| \, |#0|)
 	      (beq ,label1))
 	    instr-if
 	    (when instr-else `((b ,label2)))
@@ -261,7 +268,7 @@ list, then a list returning just new-element is returned."
 	(label2 (gensym "L")))
     (append `((,(symbolicate label1 ":")))
 	    (gen-expression expression)
-	    `((cmp r0 \, |#0|)
+	    `((cmp |r0| \, |#0|)
 	      (beq ,label2))
 	    instr
 	    `((b ,label1))
@@ -274,11 +281,24 @@ list, then a list returning just new-element is returned."
 	    `((,(symbolicate label1 ":")))
 	    (gen-expression expr3)
 	    (gen-expression expr2)
-	    `((cmp r0 \, |#0|)
+	    `((cmp |r0| \, |#0|)
 	      (beq ,label2))
 	    instr
 	    `((b ,label1))
 	    `((,(symbolicate label2 ":"))))))
+
+(defun gen-global-variable (symbol)
+  (when (not (symbol-info-function-p symbol))
+      `((|.global| ,(symbol-info-name symbol))
+	(|.data|)
+	(|.type| ,(symbol-info-name symbol) \, |%object|)
+	(|.size| ,(symbol-info-name symbol) \, |4|)
+	(,(symbolicate (symbol-info-name symbol) '\:))
+	(|.word| |2|))))
+
+(defun gen-global-variables (symbol-list)
+  (reduce #'append (mapcar #'gen-global-variable 
+			   symbol-list)))
 
 (defun substitute-globals (symbol-list function-body)
   (labels ((find-symbol (name symbols)
@@ -292,7 +312,7 @@ list, then a list returning just new-element is returned."
 			  (cadr line) symbol-list)))
 	     (if (not (symbol-info-function-p symbol))
 		 `(adrl ,(cadddr line) \, 
-			,(symbol-info-address symbol))
+			,(symbol-info-name symbol))
 		 (error "Identifier ~a is not variable~%" 
 			(symbol-info-name symbol)))))
 	 (substitute-load (line)
@@ -301,7 +321,7 @@ list, then a list returning just new-element is returned."
 		 (register (cadddr line)))
 	     (if (not (symbol-info-function-p symbol))
 		 `((adrl ,register \, 
-			 ,(symbol-info-address symbol))
+			 ,(symbol-info-name symbol))
 		   (ldr ,register \, 
 			,(symbolicate '|[| register '|,#0]|)))
 		  	   

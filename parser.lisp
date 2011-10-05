@@ -83,12 +83,18 @@
                (:right =) (:left \,) (:nonassoc if else)))
 
   (file 
-    (declaration-line)
+    (declaration-line (lambda (declaration-line)
+			(list declaration-line
+			      (gen-global-variables 
+			       declaration-line))))
     (file declaration-line (lambda (file declaration-line)
 			     (list (append 
 				    (car file)
 				    declaration-line)
-				   (cadr file))))
+				   (append 
+				    (cadr file)
+				    (gen-global-variables
+				     declaration-line)))))
     (function (lambda (function) 
                       (list (car function) 
 			    (substitute-globals 

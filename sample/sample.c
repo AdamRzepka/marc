@@ -2,7 +2,7 @@ int a, b;
 
 int main(int argc);
 
-int dupa(int a, int b)
+int fun(int a, int b)
 {
   return a + b;
 }
@@ -10,7 +10,7 @@ int dupa(int a, int b)
 int  main()
 {
   int a;
-  a = b + 4 * (5 - a) - dupa(3 + 4, 2);
+  a = b + 4 * (5 - a) - fun(3 + 4, 2);
   if (a == 4)
   {
     b =4 + 5;
