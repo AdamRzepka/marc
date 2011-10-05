@@ -240,7 +240,7 @@
   (postfix-expression
     (postfix-expression \( expression \) 
 			(lambda (a b c d) 
-			  (append c a (list '|()|))))
+			  (append '(fun-start) c '(|()|) a)))
     (postfix-expression \( \) (lambda (a b c) 
 				(append a (list '|()|))))
     (postfix-expression [ expression ] 

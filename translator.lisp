@@ -14,6 +14,16 @@
 (defun append-line (a b)
   (append a b))
 
+(defun insert-after (new-element old-element list &key (test 'eql))
+  "Return a list like list, but with new-element appearing after the
+first occurence of old-element. If old-element does not appear in
+list, then a list returning just new-element is returned."
+  (if (endp list) (list new-element)
+    (do ((head (list (first list)) (cons (first tail) head))
+         (tail (rest list) (rest tail)))
+        ((or (endp tail) (funcall test old-element (first head)))
+         (nreconc head (cons new-element tail))))))
+
 (defun set-type (type symbol-list)
   (mapcar (lambda (symbol) 
 	    (setf (symbol-info-type symbol) type)
@@ -170,6 +180,11 @@
 		       (gen-register (1- level)) 
 		       '|, #0]|))))
 
+(defun gen-funcall (onp-expr level)
+  `((function
+     ,(car onp-expr) \,
+     ,(gen-register level))))
+
 #|(defun gen-== (onp-expr level)
   `((cmp ,(gen-register (- level 2)) \, 
 	 ,(gen-register (1- level)))
@@ -203,6 +218,18 @@
 		   ,onp-expr ,level)
 		 (gen-expression* (cdr ,onp-expr)
 				  (+ ,level ,(cadr type))))))
+       ('fun-start (gen-expression* 
+		    (insert-after 		     
+		     (count '\, 
+			    ,onp-expr :end 
+			    (position '|()| ,onp-expr))
+		     '|()|
+		     (cdr ,onp-expr))
+		    ,level))
+       ('|()| (append 
+	       (gen-funcall (cdddr ,onp-expr) ,level)
+	       (gen-expression* (cddddr ,onp-expr)
+				(- ,level (cadr onp-expr)))))
        (otherwise (gen-expression* (cdr ,onp-expr) ,level)))))
 
 (defun gen-expression* (onp-expr level)
