@@ -84,9 +84,25 @@
 
   (file 
     (declaration-line)
-    (file declaration-line)
-    function
-    (file function))
+    (file declaration-line (lambda (file declaration-line)
+			     (list (append 
+				    (car file)
+				    declaration-line)
+				   (cadr file))))
+    (function (lambda (function) 
+                      (list (car function) 
+			    (substitute-globals 
+			     (car function (cadr function))))))
+    (file function (lambda (file function)
+		     (let ((symbol-list 
+			    (append (car file)
+				    (car function))))
+		       (list symbol-list 
+			     (append (cadr file)
+				     '(())
+				     (substitute-globals 
+				      symbol-list 
+				      (cadr function))))))))
   
   (declaration-line
     (declaration \; (lambda (a b) a)))

@@ -35,6 +35,9 @@
 (defun gen-register (level)
   (symbolicate 'r (write-to-string level)))
 
+(defun get-register-num (register)
+  (read-from-string (subseq (string register) 1)))
+
 (defun substitute-stack-variables (variables instructions)
 (labels ((find-variable (name variables)
 	   (when variables
@@ -106,12 +109,14 @@
 (defun gen-function (type symbol block)
   (setf (symbol-info-type symbol) type)
   (let ((fun-name (symbol-info-name symbol)))
-    `(,symbol
-      (|.global| ,fun-name)
-      (|.type| ,fun-name |%function|)
-      (,fun-name \:)
-      ,@(gen-block block 
-		   (symbol-info-args symbol)))))
+    `((,symbol)
+      ((|.global| ,fun-name)
+       (|.type| ,fun-name |%function|)
+       (,fun-name \:)
+       (stmfd |sp| \, |{r4-r10,lr}|)
+       ,@(gen-block block 
+		    (symbol-info-args symbol))
+       (ldmfd |sp| \, |{r4-r10,pc}|)))))
 
 (defun to-onp (a op b)
   (append a b (list op)))
@@ -248,5 +253,89 @@
 	    `((b ,label1))
 	    `((,(symbolicate label2 ":"))))))
 
-
+(defun substitute-globals (symbol-list function-body)
+  (labels ((find-symbol (name symbols)
+	   (if symbols
+	     (if (eq (symbol-info-name (car symbols)) name)
+		 (car symbols)
+		 (find-symbol name (cdr symbols)))
+	     (error "Undeclared identifier ~a~%" name)))
+	 (substitute-address (line)
+	   (let ((symbol (find-symbol 
+			  (cadr line) symbol-list)))
+	     (if (not (symbol-info-function-p symbol))
+		 `(adrl ,(cadddr line) \, 
+			,(symbol-info-address symbol))
+		 (error "Identifier ~a is not variable~%" 
+			(symbol-info-name symbol)))))
+	 (substitute-load (line)
+	   (let ((symbol (find-symbol
+			    (cadr line) symbol-list))
+		 (register (cadddr line)))
+	     (if (not (symbol-info-function-p symbol))
+		 `((adrl ,register \, 
+			 ,(symbol-info-address symbol))
+		   (ldr ,register \, 
+			,(symbolicate '|[| register '|,#0]|)))
+		  	   
+		 (error "Identifier ~a is not variable~%" 
+			(symbol-info-name symbol)))))
+	 (substitute-funcall (line)
+	   (let* ((symbol (find-symbol
+			    (cadr line) symbol-list))
+		  (args-num (length (symbol-info-args symbol)))
+		  (register (cadddr line))
+		  (ret-register (gen-register 
+				 (- (get-register-num 
+				     register) args-num 1))))
+	     (if (symbol-info-function-p symbol)
+		 `((stmfd |sp| \, 
+			  ,(symbolicate 
+			    '|{r0-|
+			    ret-register
+			    '|}|))
+		   ,@(loop for i from (1- args-num) downto 0
+			for j downfrom (1- 
+					(get-register-num 
+					 register))
+			  collecting `(mov 
+				       ,(gen-register i)
+				       \,
+				       ,(gen-register j)))
+		   (bl ,(symbol-info-name symbol))
+		   (mov ,(gen-register 
+			  (- (get-register-num register) 
+			     args-num)) \, |r0|)
+		   (ldmfd |sp| \, 
+			  ,(symbolicate '|{r0-| 
+					ret-register 
+					'|}|))))))
+	 (subst-line (done to-do)
+	   (if to-do
+	     (case (caar to-do)
+		   ('address 
+		    (subst-line (cons 
+				 (substitute-address 
+				  (car to-do))
+				 done)
+				(cdr to-do)))
+		   ('load
+		    (subst-line (append
+				 (reverse (substitute-load
+					   (car to-do)))
+				 done)
+				(cdr to-do)))
+		   ('function
+		    (subst-line (append
+				 (reverse (substitute-funcall
+					   (car to-do)))
+				 done)
+				(cdr to-do)))
+		   (otherwise 
+		    (subst-line (cons
+				 (car to-do)
+				 done)
+				(cdr to-do))))
+	     (reverse done))))
+  (subst-line () function-body)))
 

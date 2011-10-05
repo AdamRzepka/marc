@@ -17,7 +17,7 @@ int  main()
   }
   else
   {
-    c = b--;
+    b--;
     b++;
   }  
   return 0;
