@@ -20,20 +20,28 @@
      ("/\\*(\\*[^/]|[^\\*])*\\*/")
 
 					; slowa kluczowe i operatory
-     ,@(loop for op in (append (car +tokens+) (cadr +tokens+))
-	    collecting `(,(quote-nonalpha (string-downcase (string op))) 
+     ,@(loop for op in (append (car +tokens+) 
+			       (cadr +tokens+))
+	    collecting `(,(quote-nonalpha 
+			   (string-downcase (string op))) 
 			  (return (values ',op ',op))))
-     ("[A-Za-z_]\\w*" (return (values 'identifier 
-				      (intern (regex-replace-all "_" $@ "-")))))
+     ("[A-Za-z_]\\w*" (return 
+			(values 
+			 'identifier 
+			 (intern 
+			  (regex-replace-all "_" $@ "-")))))
 					; literaly liczbowe i znakowe
      ,@(loop for pattern in '("\\d+[uUlL]?" "0[0-7]+[uUlL]?" "0x|X[0-9A-Fa-f]+[uUlL]?"
 			      "\\d+\\.\\d*([eE][+-]?\\d+)?[fFlL]?"
 			      "\\d*\\.\\d+([eE][+-]?\\d+)?[fFlF]?" 
 			      "\\d+([eE][+-]?\\d+)?[fFlF]?"
 			      "L?'(\\.|[^\\'])+'")
-	  collecting `(,pattern (return (values 'constant 
-						(read-from-string $@)))))
-     ("L?\"(\\.|[^\\\"])*\"" (return (values 'string (intern $@))))
+	  collecting `(,pattern 
+		       (return (values 
+				'constant 
+				(read-from-string $@)))))
+     ("L?\"(\\.|[^\\\"])*\"" (return 
+			       (values 'string (intern $@))))
 					; biale znaki
      ("\\s")))
 
@@ -96,10 +104,12 @@
 
   (pointer-declarator
     declarator
-    (pointer declarator (lambda (pointer declarator) declarator)))
+    (pointer declarator (lambda (pointer declarator) 
+			  declarator)))
   
   (declarator
-    (identifier (lambda (identifier) (make-symbol-info :name identifier))) 
+    (identifier (lambda (identifier) 
+		  (make-symbol-info :name identifier))) 
     (\( declarator \))
     (declarator [ expression ])
     (declarator [ ] )
@@ -137,29 +147,31 @@
     (type var-init #'set-type))
   
   (block
-    ({ })
-    ({ instruction-list })
-    ({ declaration-list })
-    ({ declaration-list instruction-list }))
+    ({ } (lambda (a b) '()))
+    ({ instruction-list } (lambda (a b c) (list '() b)))
+    ({ declaration-list } (lambda (a b c) (list b '())))
+    ({ declaration-list instruction-list } 
+       (lambda (a b c d) (list b c))))
   
   (declaration-list
     declaration-line
-    (declaration-list declaration-line))
+    (declaration-list declaration-line #'append-line))
   
   (instruction-list
-    (instruction-list instruction)
+    (instruction-list instruction #'append-line)
     instruction)
   
   (instruction
-    block
-    (expression-instr)
+    (block #'gen-block) 
+    expression-instr
     conditional
     loop
-    (return expression \;)
+    (return expression \; (lambda (r expression s)
+			    (gen-expression expression)))
     (return \;))
   
   (expression-instr
-    \;
+    (\; (lambda () nil))
     (expression \; (lambda (expression s) 
 		     (gen-expression expression))))
   
