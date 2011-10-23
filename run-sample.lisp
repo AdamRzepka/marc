@@ -1,4 +1,4 @@
-(use-package :c-compiler)
+(use-package :marc)
 
 (defun reload-and-run ()
   (load "translator.lisp")

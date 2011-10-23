@@ -1,4 +1,4 @@
-int a, b;
+int a;
 
 int main(int argc);
 
@@ -10,6 +10,8 @@ int fun(int a, int b)
 int  main()
 {
   int a;
+  int b;
+  b = 1;
   a = b + 4 * (5 - a) - fun(3 + 4, 2);
   if (a == 4)
   {
@@ -17,8 +19,8 @@ int  main()
   }
   else
   {
-    b--;
-    b++;
+    b = b + 1;
+    b = b - 1;
   }  
   return 0;
 }

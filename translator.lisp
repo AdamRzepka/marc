@@ -1,7 +1,10 @@
-(in-package :c-compiler)
+(in-package :marc)
 
 (defstruct symbol-info
   name type function-p init-value args address)
+
+(defun unsupported (&rest a)
+    (error "Unsupported construction ~S~%" a))
 
 (defun add-element (list a &optional (b nil b-supplied-p))
   (if b-supplied-p
@@ -127,6 +130,7 @@ list, then a list returning just new-element is returned."
   (let ((fun-name (symbol-info-name symbol)))
     `((,symbol)
       ((|.text|)
+       (|.align| |2|)
        (|.global| ,fun-name)
        (|.type| ,fun-name |%function|)
        (,(symbolicate fun-name '\:))
@@ -291,6 +295,7 @@ list, then a list returning just new-element is returned."
   (when (not (symbol-info-function-p symbol))
       `((|.global| ,(symbol-info-name symbol))
 	(|.data|)
+	(|.align| |2|)
 	(|.type| ,(symbol-info-name symbol) \, |%object|)
 	(|.size| ,(symbol-info-name symbol) \, |4|)
 	(,(symbolicate (symbol-info-name symbol) '\:))
@@ -301,26 +306,26 @@ list, then a list returning just new-element is returned."
 			   symbol-list)))
 
 (defun substitute-globals (symbol-list function-body)
-  (labels ((find-symbol (name symbols)
+  (labels ((find-symbol-info (name symbols)
 	   (if symbols
 	     (if (eq (symbol-info-name (car symbols)) name)
 		 (car symbols)
-		 (find-symbol name (cdr symbols)))
+		 (find-symbol-info name (cdr symbols)))
 	     (error "Undeclared identifier ~a~%" name)))
 	 (substitute-address (line)
-	   (let ((symbol (find-symbol 
+	   (let ((symbol (find-symbol-info 
 			  (cadr line) symbol-list)))
 	     (if (not (symbol-info-function-p symbol))
-		 `(adrl ,(cadddr line) \, 
+		 `(ldr ,(cadddr line) \, 
 			,(symbol-info-name symbol))
 		 (error "Identifier ~a is not variable~%" 
 			(symbol-info-name symbol)))))
 	 (substitute-load (line)
-	   (let ((symbol (find-symbol
+	   (let ((symbol (find-symbol-info
 			    (cadr line) symbol-list))
 		 (register (cadddr line)))
 	     (if (not (symbol-info-function-p symbol))
-		 `((adrl ,register \, 
+		 `((ldr ,register \, 
 			 ,(symbol-info-name symbol))
 		   (ldr ,register \, 
 			,(symbolicate '|[| register '|,#0]|)))
@@ -328,19 +333,22 @@ list, then a list returning just new-element is returned."
 		 (error "Identifier ~a is not variable~%" 
 			(symbol-info-name symbol)))))
 	 (substitute-funcall (line)
-	   (let* ((symbol (find-symbol
+	   (let* ((symbol (find-symbol-info
 			    (cadr line) symbol-list))
 		  (args-num (length (symbol-info-args symbol)))
 		  (register (cadddr line))
-		  (ret-register (gen-register 
-				 (- (get-register-num 
-				     register) args-num 1))))
+		  (ret-registers 
+		   (if (> (- (get-register-num 
+				register) args-num 1) 0) 
+		     (symbolicate '|{r0-| 
+				  (gen-register 
+				   (- (get-register-num 
+				       register) args-num 1))
+				  '|}|)
+		     '|{r0}|)))
 	     (if (symbol-info-function-p symbol)
 		 `((stmfd |sp| \, 
-			  ,(symbolicate 
-			    '|{r0-|
-			    ret-register
-			    '|}|))
+			  ,ret-registers)
 		   ,@(loop for i from (1- args-num) downto 0
 			for j downfrom (1- 
 					(get-register-num 
@@ -354,9 +362,7 @@ list, then a list returning just new-element is returned."
 			  (- (get-register-num register) 
 			     args-num)) \, |r0|)
 		   (ldmfd |sp| \, 
-			  ,(symbolicate '|{r0-| 
-					ret-register 
-					'|}|))))))
+			  ,ret-registers)))))
 	 (subst-line (done to-do)
 	   (if to-do
 	     (case (caar to-do)

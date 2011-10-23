@@ -1,4 +1,4 @@
-(in-package :c-compiler)
+(in-package :marc)
 
 (defun quote-nonalpha (token)
   (coerce (loop for c across token
@@ -121,7 +121,7 @@
     var-init)
   
   (var-init
-    (pointer-declarator = initializer)
+    (pointer-declarator = initializer #'unsupported)
     (pointer-declarator))
 
   (pointer-declarator
@@ -133,14 +133,14 @@
     (identifier (lambda (identifier) 
 		  (make-symbol-info :name identifier))) 
     (\( declarator \))
-    (declarator [ expression ])
-    (declarator [ ] )
+    (declarator [ expression ] #'unsupported)
+    (declarator [ ] #'unsupported)
     (declarator \( param-list \) #'set-function)
     (declarator \( \) #'set-function))
   
   (pointer
-    *
-    (pointer *))
+    (* #'unsupported)
+    (pointer * #'unsupported))
   
   (initializer
     ({ initializer-list })
@@ -154,8 +154,8 @@
   
   (type 
     char
-    double
-    float
+    (double #'unsupported)
+    (float #'unsupported)
     int
     long
     short
@@ -190,7 +190,7 @@
     loop
     (return expression \; (lambda (r expression s)
 			    (gen-expression expression)))
-    (return \;))
+    (return \; (lambda () nil)))
   
   (expression-instr
     (\; (lambda () nil))
@@ -203,23 +203,23 @@
   (expression
     cast-expression
     (expression * expression #'to-onp)
-    (expression / expression #'to-onp)
-    (expression % expression #'to-onp)
+    (expression / expression #'unsupported)
+    (expression % expression #'unsupported)
     (expression + expression #'to-onp)
     (expression - expression #'to-onp)
-    (expression << expression #'to-onp)
-    (expression >> expression #'to-onp)
+    (expression << expression  #'unsupported)
+    (expression >> expression #'unsupported)
     (expression > expression #'to-onp)
     (expression < expression #'to-onp)
     (expression >= expression #'to-onp)
     (expression <= expression #'to-onp)
     (expression == expression #'to-onp)
     (expression != expression #'to-onp)
-    (expression & expression #'to-onp)
-    (expression ^ expression #'to-onp)
-    (expression \| expression #'to-onp)
-    (expression \&\& expression #'to-onp)
-    (expression \|\| expression #'to-onp)
+    (expression & expression  #'unsupported)
+    (expression ^ expression  #'unsupported)
+    (expression \| expression  #'unsupported)
+    (expression \&\& expression  #'unsupported)
+    (expression \|\| expression  #'unsupported)
     (unary-expression = expression 
 		      (lambda (a b c)
 			(append c a (list b))))
@@ -227,21 +227,25 @@
   
   (cast-expression
     unary-expression
-    (\( type \) cast-expression))
+    (\( type \) cast-expression #'unsupported))
   
   (unary-expression
     postfix-expression
-    (++ unary-expression #'swap)
-    (-- unary-expression #'swap)
+    (++ unary-expression #'unsupported)
+    (-- unary-expression #'unsupported)
     (+ cast-expression (lambda (a b) b))
-    (- cast-expression (lambda (a b) (append b (list 'un-))))
-    (* cast-expression (lambda (a b) (append b (list 'un*))))
-    (& cast-expression (lambda (a b) (append b (list 'un&))))
-    (! cast-expression #'swap)
-    (~ cast-expression #'swap)
-    (sizeof unary-expressiion #'swap)
-    (sizeof \( lvalue \) (lambda (a b c d) 
-			   (append c (list a)))))
+    (- cast-expression #'unsupported;(lambda (a b) (append b (list 'un-)))
+       )
+    (* cast-expression #'unsupported;(lambda (a b) (append b (list 'un*)))
+       )
+    (& cast-expression #'unsupported;(lambda (a b) (append b (list 'un&)))
+       )
+    (! cast-expression #'unsupported;#'swap
+       )
+    (~ cast-expression #'unsupported;#'swap
+       )
+    (sizeof unary-expressiion #'unsupported)
+    (sizeof \( lvalue \) #'unsupported))
   
   (postfix-expression
     (postfix-expression \( expression \) 
@@ -250,12 +254,9 @@
     (postfix-expression \( \) (lambda (a b c) 
 				(append a (list '|()|))))
     (postfix-expression [ expression ] 
-			(lambda (a b c d) 
-			  (append c a (list '+ 'un*))))
-    (postfix-expression ++ (lambda (a b) 
-			     (append a (list 'post++))))
-    (postfix-expression -- (lambda (a b) 
-			     (append a (list 'post--))))
+			#'unsupported)
+    (postfix-expression ++ #'unsupported)
+    (postfix-expression -- #'unsupported)
     highest-expression)
     
   #|(argument-list
@@ -265,7 +266,8 @@
   (highest-expression
     (identifier (lambda (name) (list 'symbol name)))
     (constant (lambda (value) (list 'constant value)))
-    (string-literal (lambda (string) (list 'string string)))
+    (string-literal #'unsupported;(lambda (string) (list 'string string))
+     )
     (\( expression \) (lambda (a b c) b)))
     
   (conditional
@@ -280,7 +282,7 @@
     (for \( expression-instr expression-instr expression \) instruction)
     (for \( expression-instr expression-instr \) instruction)
     (while \( expression \) instruction)
-    (do instruction while \( expression \) \;)))
+    (do instruction while \( expression \) \; #'unsupported)))
 
 (defun read-file (path)
   (with-open-file (is path :direction :input)
