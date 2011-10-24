@@ -1,17 +1,18 @@
 (in-package :marc)
 
-(defun quote-nonalpha (token)
-  (coerce (loop for c across token
-	     appending (if (alphanumericp c)
-			   `(,c)
-			   `(#\\ ,c))) 'string))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+ (defun quote-nonalpha (token)
+   (coerce (loop for c across token
+	      appending (if (alphanumericp c)
+			    `(,c)
+			    `(#\\ ,c))) 'string))
 
-;; Tokeny podzielone na 3 kategorie - 
-(defconstant +tokens+ '((char double do else float for if int long return 
-			 short sizeof void while)
-			(<= >= == != \; { } \, = \( \) [ ] ! ~ -- ++ - + * /
-			 % < > ^ \|\| \&\& \| \&)
-			(identifier constant string)))
+ ;; Tokeny podzielone na 3 kategorie - 
+ (defconstant +tokens+ '((char double do else float for if int long return 
+			  short sizeof void while)
+			 (<= >= == != \; { } \, = \( \) [ ] ! ~ -- ++ - + * /
+			  % < > ^ \|\| \&\& \| \&)
+			 (identifier constant string))))
 
 (defmacro create-c-lexer (name)
   `(define-string-lexer ,name
@@ -69,7 +70,7 @@
 
 ;; cl-yacc parser
 (define-parser *c-parser*
-  ;(:muffle-conflicts t)
+  (:muffle-conflicts t)
   (:start-symbol file)
   (:terminals (char double do else float for if int long return 
 	      short sizeof void while identifier constant
@@ -98,7 +99,7 @@
     (function (lambda (function) 
                       (list (car function) 
 			    (substitute-globals 
-			     (car function (cadr function))))))
+			     (car function) (cadr function)))))
     (file function (lambda (file function)
 		     (let ((symbol-list 
 			    (append (car file)
@@ -111,7 +112,7 @@
 				      (cadr function))))))))
   
   (declaration-line
-    (declaration \; (lambda (a b) a)))
+    (declaration \; (lambda (a b) (declare (ignore b)) a)))
 
   (declaration
     (type var-init-list #'set-type))
@@ -126,7 +127,8 @@
 
   (pointer-declarator
     declarator
-    (pointer declarator (lambda (pointer declarator) 
+    (pointer declarator (lambda (pointer declarator)
+			  (declare (ignore pointer))
 			  declarator)))
   
   (declarator
@@ -169,11 +171,11 @@
     (type var-init #'set-type))
   
   (block
-    ({ } (lambda (a b) '()))
-    ({ instruction-list } (lambda (a b c) (list '() b)))
-    ({ declaration-list } (lambda (a b c) (list b '())))
+    ({ } (lambda (a b) (declare (ignore a b)) '()))
+    ({ instruction-list } (lambda (a b c) (declare (ignore a c)) (list '() b)))
+    ({ declaration-list } (lambda (a b c) (declare (ignore a c)) (list b '())))
     ({ declaration-list instruction-list } 
-       (lambda (a b c d) (list b c))))
+       (lambda (a b c d) (declare (ignore a d)) (list b c))))
   
   (declaration-list
     declaration-line
