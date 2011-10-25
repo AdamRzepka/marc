@@ -19,7 +19,12 @@
 			    (add-start-symbol
 			     (cadr (parse-file in))))))))
 
-(setf *args* cl-user::*args*)
+(defparameter *args* (or 
+		      #+SBCL sb-ext:*posix-argv*  
+		      #+LISPWORKS system:*line-arguments-list*
+		      #+CMU extensions:*command-line-words*
+		      #+CLISP cl-user::*args*
+		      nil))
 
 (case (length *args*)
   (0 (format t "Usage:~%carm SOURCE-FILE [OUTPUT-FILE]~%"))

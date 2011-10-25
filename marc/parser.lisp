@@ -8,11 +8,11 @@
 			    `(#\\ ,c))) 'string))
 
  ;; Tokeny podzielone na 3 kategorie - 
- (defconstant +tokens+ '((char double do else float for if int long return 
+ (define-constant +tokens+ '((char double do else float for if int long return 
 			  short sizeof void while)
 			 (<= >= == != \; { } \, = \( \) [ ] ! ~ -- ++ - + * /
 			  % < > ^ \|\| \&\& \| \&)
-			 (identifier constant string))))
+			 (identifier constant string)) :test #'equal))
 
 (defmacro create-c-lexer (name)
   `(define-string-lexer ,name
@@ -191,12 +191,18 @@
     conditional
     loop
     (return expression \; (lambda (r expression s)
+			    (declare (ignore r s))
 			    (gen-expression expression)))
-    (return \; (lambda () nil)))
+    (return \; (lambda (a b)
+		 (declare (ignore a b))
+		 nil)))
   
   (expression-instr
-    (\; (lambda () nil))
+    (\; (lambda (a)
+	  (declare (ignore a))
+	  nil))
     (expression \; (lambda (expression s) 
+		     (declare (ignore s))
 		     (gen-expression expression))))
   
   ;; Pomimo, iz ponizsza produkcja wprowadza niejednoznacznosc,
@@ -235,7 +241,9 @@
     postfix-expression
     (++ unary-expression #'unsupported)
     (-- unary-expression #'unsupported)
-    (+ cast-expression (lambda (a b) b))
+    (+ cast-expression (lambda (a b) 
+			 (declare (ignore a))
+			 b))
     (- cast-expression #'unsupported;(lambda (a b) (append b (list 'un-)))
        )
     (* cast-expression #'unsupported;(lambda (a b) (append b (list 'un*)))
@@ -252,9 +260,11 @@
   (postfix-expression
     (postfix-expression \( expression \) 
 			(lambda (a b c d) 
+			  (declare (ignore b d))			    
 			  (append '(fun-start) c '(|()|) a)))
-    (postfix-expression \( \) (lambda (a b c) 
-				(append a (list '|()|))))
+    (postfix-expression \( \) (lambda (a b c)
+				(declare (ignore b c))
+ 				(append a (list '|()|))))
     (postfix-expression [ expression ] 
 			#'unsupported)
     (postfix-expression ++ #'unsupported)
@@ -270,15 +280,19 @@
     (constant (lambda (value) (list 'constant value)))
     (string-literal #'unsupported;(lambda (string) (list 'string string))
      )
-    (\( expression \) (lambda (a b c) b)))
+    (\( expression \) (lambda (a b c)
+			(declare (ignore a c))
+			b)))
     
   (conditional
     (if \( expression \) instruction else instruction
 	(lambda (t1 t2 expression t3 instr-if t4 instr-else)
+	  (declare (ignore t1 t2 t3 t4))
 	  (gen-if expression instr-if instr-else)))
     (if \( expression \) instruction
 	(lambda (t1 t2 expression t3 instr-if)
-	  (gen-if expression instr-if instr-else))))
+	  (declare (ignore t1 t2 t3))
+ 	  (gen-if expression instr-if))))
     
   (repeat
     (for \( expression-instr expression-instr expression \) instruction)
