@@ -12,6 +12,7 @@
       (append list (list a))))
 
 (defun skip-and-append (a b c)
+  (declare (ignore b))
   (append a c))
 
 (defun append-line (a b)
@@ -35,10 +36,23 @@ list, then a list returning just new-element is returned."
 
 (defun set-function (symbol a b &optional 
 		     (c nil c-supplied-p))
+  (declare (ignore a c))
   (setf (symbol-info-function-p symbol) t)
   (setf (symbol-info-args symbol) 
 	(if c-supplied-p
 	    b
+
+
+
+
+
+
+
+
+
+
+
+
 	    nil))
   symbol)
 
@@ -80,13 +94,13 @@ list, then a list returning just new-element is returned."
 	 (subst-line (done to-do)
 	   (if to-do
 	     (case (caar to-do)
-		   ('address 
+		   (address 
 		    (subst-line (cons 
 				 (substitute-address 
 				  (car to-do))
 				 done)
 				(cdr to-do)))
-		   ('load
+		   (load
 		    (subst-line (cons
 				 (substitute-load
 				  (car to-do))
@@ -153,14 +167,14 @@ list, then a list returning just new-element is returned."
 
 (defun gen-symbol (onp-expr level)
   `((,(case (caddr onp-expr)
-	    ('= 'address)
-	    ('un* 'address)
-	    ('un& 'address)
-	    ('-- 'address)
-	    ('++ 'address)
-	    ('post++ 'address)
-	    ('post-- 'address)
-	    ('|()| 'function)
+	    (= 'address)
+	    (un* 'address)
+	    (un& 'address)
+	    (-- 'address)
+	    (++ 'address)
+	    (post++ 'address)
+	    (post-- 'address)
+	    (|()| 'function)
 	    (otherwise 'load))
       ,(cadr onp-expr) \,
       ,(gen-register level))))
@@ -171,21 +185,25 @@ list, then a list returning just new-element is returned."
 			    (cadr onp-expr))))))
 
 (defun gen-+ (onp-expr level)
+  (declare (ignore onp-expr))
   `((add ,(gen-register (- level 2)) \, 
 	 ,(gen-register (- level 2)) \,
 	 ,(gen-register (1- level)))))
 
 (defun gen-- (onp-expr level)
+  (declare (ignore onp-expr))
   `((sub ,(gen-register (- level 2)) \, 
 	 ,(gen-register (- level 2)) \,
 	 ,(gen-register (1- level)))))
 
 (defun gen-* (onp-expr level)
+  (declare (ignore onp-expr))
   `((mul ,(gen-register (- level 2)) \, 
 	 ,(gen-register (- level 2)) \,
 	 ,(gen-register (1- level)))))
 
 (defun gen-= (onp-expr level)
+  (declare (ignore onp-expr))
   `((str ,(gen-register (- level 2)) \,
 	 ,(symbolicate '[ 
 		       (gen-register (1- level)) 
@@ -204,6 +222,7 @@ list, then a list returning just new-element is returned."
 
 (defmacro gen-cmp (cmp-symbol cmp-suffix n-cmp-suffix)
   `(defun ,(symbolicate 'gen- cmp-symbol) (onp-expr level)
+     (declare (ignore onp-expr))
      (list (list 'cmp (gen-register (- level 2)) '\, 
 		 (gen-register (1- level)))
 	   (list ',(symbolicate 'mov cmp-suffix)
@@ -223,13 +242,13 @@ list, then a list returning just new-element is returned."
      (case next-expr
        ,@(loop for type in types
 	      collecting
-	      `(',(car type) 
+	      `(,(car type) 
 		(append 
 		 (,(symbolicate 'gen- (car type)) 
 		   ,onp-expr ,level)
 		 (gen-expression* (cdr ,onp-expr)
 				  (+ ,level ,(cadr type))))))
-       ('fun-start (gen-expression* 
+       (fun-start (gen-expression* 
 		    (insert-after 		     
 		     (count '\, 
 			    ,onp-expr :end 
@@ -237,7 +256,7 @@ list, then a list returning just new-element is returned."
 		     '|()|
 		     (cdr ,onp-expr))
 		    ,level))
-       ('|()| (append 
+       (|()| (append 
 	       (gen-funcall (cdddr ,onp-expr) ,level)
 	       (gen-expression* (cddddr ,onp-expr)
 				(- ,level (cadr onp-expr)))))
@@ -366,19 +385,19 @@ list, then a list returning just new-element is returned."
 	 (subst-line (done to-do)
 	   (if to-do
 	     (case (caar to-do)
-		   ('address 
+		   (address 
 		    (subst-line (cons 
 				 (substitute-address 
 				  (car to-do))
 				 done)
 				(cdr to-do)))
-		   ('load
+		   (load
 		    (subst-line (append
 				 (reverse (substitute-load
 					   (car to-do)))
 				 done)
 				(cdr to-do)))
-		   ('function
+		   (function
 		    (subst-line (append
 				 (reverse (substitute-funcall
 					   (car to-do)))

@@ -20,7 +20,7 @@
 			     (cadr (parse-file in))))))))
 
 (defparameter *args* (or 
-		      #+SBCL sb-ext:*posix-argv*  
+		      #+SBCL (cdr sb-ext:*posix-argv*)  
 		      #+LISPWORKS system:*line-arguments-list*
 		      #+CMU extensions:*command-line-words*
 		      #+CLISP cl-user::*args*
