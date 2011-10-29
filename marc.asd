@@ -13,4 +13,5 @@
 			 (:file "translator")
 			 (:file "parser")
 			 (:file "utils")
+			 (:file "error-handler")
 			 (:file "marc")))))

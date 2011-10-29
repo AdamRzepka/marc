@@ -300,14 +300,3 @@
     (while \( expression \) instruction)
     (do instruction while \( expression \) \; #'unsupported)))
 
-(defun read-file (path)
-  (with-open-file (is path :direction :input)
-    (with-output-to-string (os)
-      (let (c)
-	(loop do (setf c (read-char is nil))
-	   while c
-	   do (write-char c os))))))
-
-(defun parse-file (path)
-  (create-c-lexer c-lexer)
-  (parse-with-lexer (c-lexer (read-file path)) *c-parser*))
