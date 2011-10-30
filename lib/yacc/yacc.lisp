@@ -25,7 +25,8 @@
            #:yacc-compile-warning #:conflict-warning #:conflict-summary-warning
            #:yacc-runtime-error #:yacc-parse-error #:yacc-parse-error-terminal
            #:yacc-parse-error-value #:yacc-parse-error-expected-terminals
-	   #:yacc-parse-error-preceding-terminal #:yacc-parse-error-preceding-value)
+	   #:yacc-parse-error-preceding-terminal #:yacc-parse-error-preceding-value
+	   #:try-to-recover #:skip-token #:insert-token #:use-token)
   #+CMU
   (:import-from #:extensions #:required-argument #:memq)
   )

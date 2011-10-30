@@ -12,13 +12,14 @@
 	      (find '\) (yacc-parse-error-expected-terminals c)))
 	 (format t "Syntax error: expected )~%")
 	 (insert-token '\) '\) ))
-	(t (format t "Unexpected terminal ~S (value ~S) after terminal ~S~
+	(t ;(princ c)
+	   (format t "Unexpected terminal ~S (value ~S) after terminal ~S~
                       (value ~S). ~@:_ Expected one of: ~S"
 		   (yacc-parse-error-terminal c)
 		   (yacc-parse-error-value c)
 		   (yacc-parse-error-preceding-terminal c)
 		   (yacc-parse-error-preceding-value c)
-		   (yacc-parse-error-expected-terminals c)) 
+		   (yacc-parse-error-expected-terminals c))
 	   (try-to-recover))))
 
 

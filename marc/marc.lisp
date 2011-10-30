@@ -9,8 +9,10 @@
 
 (defun parse-file (stream)
   (create-c-lexer c-lexer)
-  (handler-case (parse-with-lexer (c-lexer (read-file stream)) *c-parser*)
-    (yacc-parse-error (c) (handle-parse-error c))))
+  (handler-bind ((yacc-parse-error #'handle-parse-error
+		  ;(lambda (c) (invoke-restart 'try-to-recover))
+		  ))
+    (parse-with-lexer (c-lexer (read-file stream)) *c-parser*)))
 
 (defun compile-c-file (in out)
   (with-open-file 
