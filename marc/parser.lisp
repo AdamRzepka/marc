@@ -27,10 +27,10 @@
   (:documentation "It holds token value and some additional info (line number for now)."))
 
 (define-condition lexer-error (error)
-  ((char :initarg :character :reader char)
+  ((sign :initarg :sign :reader sign)
    (line :initarg :line :reader line))
   (:report (lambda (c stream)
-	     (format stream "Line ~D: Forbiden character ~C" (line c) (char c)))))
+	     (format stream "Line ~D: Forbiden character ~C" (line c) (sign c)))))
 
 (defmacro create-c-lexer (name)
   `(let ((line-number 1)) 
@@ -38,8 +38,8 @@
 	 ;; comments
 	 ("/\\*(\\*[^/]|[^\\*])*\\*/")
        ;; keywords and operators
-       ,@(loop for op in (append (car +tokens+)
-				 (cadr +tokens+))
+       ,@(loop for op in (append (first +tokens+)
+				 (second +tokens+))
 	    collecting `(,(quote-nonalpha 
 			   (string-downcase (string op))) 
 			  (return (values ',op
@@ -74,7 +74,7 @@
        ("\\n" (incf line-number))
        ;;other characters
        ("." (with-simple-restart (continue "Continue reading input.")
-	      (error "Forbidden character ~S." $@))))))
+	      (error 'lexer-error :sign (character $@) :line line-number))))))
 
 (defun c-stream-lexer (stream lexer-fun)
   (labels ((reload-closure (stream) 
