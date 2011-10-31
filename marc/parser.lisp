@@ -1,3 +1,5 @@
+;;; Lexer and parser definitions.
+
 (in-package :marc)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -7,44 +9,72 @@
 			    `(,c)
 			    `(#\\ ,c))) 'string))
 
- ;; Tokeny podzielone na 3 kategorie - 
+ ;;; Tokens split into 3 categories.
  (define-constant +tokens+ '((char double do else float for if int long return 
 			  short sizeof void while)
 			 (<= >= == != \; { } \, = \( \) [ ] ! ~ -- ++ - + * /
 			  % < > ^ \|\| \&\& \| \&)
 			 (identifier constant string)) :test #'equal))
 
+(defclass token-info ()
+  ((value :type symbol
+	  :accessor value
+	  :initarg :value)
+   (line :type integer
+	 :accessor line
+	 :initarg :line
+	 :initform (error "Line unspecified.")))
+  (:documentation "It holds token value and some additional info (line number for now)."))
+
+(define-condition lexer-error (error)
+  ((char :initarg :character :reader char)
+   (line :initarg :line :reader line))
+  (:report (lambda (c stream)
+	     (format stream "Line ~D: Forbiden character ~C" (line c) (char c)))))
+
 (defmacro create-c-lexer (name)
-  `(define-string-lexer ,name
-
-					; komentarze
-     ("/\\*(\\*[^/]|[^\\*])*\\*/")
-
-					; slowa kluczowe i operatory
-     ,@(loop for op in (append (car +tokens+) 
-			       (cadr +tokens+))
+  `(let ((line-number 1)) 
+     (define-string-lexer ,name
+	 ;; comments
+	 ("/\\*(\\*[^/]|[^\\*])*\\*/")
+       ;; keywords and operators
+       ,@(loop for op in (append (car +tokens+)
+				 (cadr +tokens+))
 	    collecting `(,(quote-nonalpha 
 			   (string-downcase (string op))) 
-			  (return (values ',op ',op))))
-     ("[A-Za-z_]\\w*" (return 
-			(values 
-			 'identifier 
-			 (intern 
-			  (regex-replace-all "_" $@ "-")))))
-					; literaly liczbowe i znakowe
-     ,@(loop for pattern in '("\\d+[uUlL]?" "0[0-7]+[uUlL]?" "0x|X[0-9A-Fa-f]+[uUlL]?"
-			      "\\d+\\.\\d*([eE][+-]?\\d+)?[fFlL]?"
-			      "\\d*\\.\\d+([eE][+-]?\\d+)?[fFlF]?" 
-			      "\\d+([eE][+-]?\\d+)?[fFlF]?"
-			      "L?'(\\.|[^\\'])+'")
-	  collecting `(,pattern 
-		       (return (values 
-				'constant 
-				(read-from-string $@)))))
-     ("L?\"(\\.|[^\\\"])*\"" (return 
-			       (values 'string (intern $@))))
-					; biale znaki
-     ("\\s")))
+			  (return (values ',op
+					  (make-instance 'token-info 
+							 :value ',op :line line-number)))))
+       ("[A-Za-z_]\\w*" (return
+			  (values
+			   'identifier 
+			   (make-instance 'token-info
+					  :value
+					  (intern 
+					   (regex-replace-all "_" $@ "-"))
+					  :line line-number))))
+       ;; literals (integers, floats and characters)
+       ,@(loop for pattern in '("\\d+[uUlL]?" "0[0-7]+[uUlL]?" "0x|X[0-9A-Fa-f]+[uUlL]?"
+				"\\d+\\.\\d*([eE][+-]?\\d+)?[fFlL]?"
+				"\\d*\\.\\d+([eE][+-]?\\d+)?[fFlF]?" 
+				"\\d+([eE][+-]?\\d+)?[fFlF]?"
+				"L?'(\\.|[^\\'])+'")
+	    collecting `(,pattern 
+			 (return (values 
+				  'constant
+				  (make-instance 'token-info
+						 :value (read-from-string $@)
+						 :line line-number)))))
+       ;; string literals
+       ("L?\"(\\.|[^\\\"])*\"" (return 
+				 (values 'string (make-instance 'token-info
+								:value (intern $@)
+								:line line-number))))
+       ;; end of line
+       ("\\n" (incf line-number))
+       ;;other characters
+       ("." (with-simple-restart (continue "Continue reading input.")
+	      (error "Forbidden character ~S." $@))))))
 
 (defun c-stream-lexer (stream lexer-fun)
   (labels ((reload-closure (stream) 
@@ -68,7 +98,7 @@
 	      nil))))))
 
 
-;; cl-yacc parser
+;;; cl-yacc parser
 (define-parser *c-parser*
   (:muffle-conflicts t)
   (:start-symbol file)
@@ -76,8 +106,6 @@
 	      short sizeof void while identifier constant
 	      string << >> ++ -- \&\& \|\| <= >= == != \; { }
 	      \, = \( \) [ ] ! ~ - + * / % < > ^ \|))
-  ;; Zdefiniowanie priorytetow i lacznosci operatorow
-  ;; pozwala zredukowac ilosc produkcji
   (:precedence ((:left * / %) (:left + -) (:left << >>)
                (:left < > <= >=) (:left == !=) (:left &)
                (:left ^) (:left \|) (:left \&\&) (:left \|\|)
