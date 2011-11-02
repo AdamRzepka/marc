@@ -1,7 +1,7 @@
 int a;
 
 int main(int argc);
-
+/*asd @%$*/ 
 int fun(int a, int b)
 {
   return a + b;

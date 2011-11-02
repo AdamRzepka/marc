@@ -22,8 +22,7 @@
 	  :initarg :value)
    (line :type integer
 	 :accessor line
-	 :initarg :line
-	 :initform (error "Line unspecified.")))
+	 :initarg :line))
   (:documentation "It holds token value and some additional info (line number for now)."))
 
 (define-condition lexer-error (error)
@@ -33,7 +32,7 @@
 	     (format stream "Line ~D: Forbiden character ~C" (line c) (sign c)))))
 
 (defmacro create-c-lexer (name)
-  `(let ((line-number 1)) 
+  `(let ((line-number 1))
      (define-string-lexer ,name
 	 ;; comments
 	 ("/\\*(\\*[^/]|[^\\*])*\\*/")
@@ -73,7 +72,7 @@
        ;; end of line
        ("\\n" (incf line-number))
        ;;other characters
-       ("." (with-simple-restart (continue "Continue reading input.")
+       ("\\S" (with-simple-restart (continue "Continue reading input.")
 	      (error 'lexer-error :sign (character $@) :line line-number))))))
 
 (defun c-stream-lexer (stream lexer-fun)
