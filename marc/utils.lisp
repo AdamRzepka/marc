@@ -20,3 +20,6 @@
   (append '((|.global| |_start|)
 	    (|_start:| b |main|))
 	instructions))
+
+(defun rcons (a b)
+  (cons b a))

@@ -100,7 +100,7 @@
 ;;; cl-yacc parser
 (define-parser *c-parser*
   (:muffle-conflicts t)
-  (:start-symbol file)
+  (:start-symbol source)
   (:terminals (char double do else float for if int long return 
 	      short sizeof void while identifier constant
 	      string << >> ++ -- \&\& \|\| <= >= == != \; { }
@@ -110,90 +110,74 @@
                (:left ^) (:left \|) (:left \&\&) (:left \|\|)
                (:right =) (:left \,) (:nonassoc if else)))
 
+  (source
+    (file #'nreverse))
+
   (file 
-    (declaration-line (lambda (declaration-line)
-			(list declaration-line
-			      (gen-global-variables 
-			       declaration-line))))
-    (file declaration-line (lambda (file declaration-line)
-			     (list (append 
-				    (car file)
-				    declaration-line)
-				   (append 
-				    (cadr file)
-				    (gen-global-variables
-				     declaration-line)))))
-    (function (lambda (function) 
-                      (list (car function) 
-			    (substitute-globals 
-			     (car function) (cadr function)))))
-    (file function (lambda (file function)
-		     (let ((symbol-list 
-			    (append (car file)
-				    (car function))))
-		       (list symbol-list 
-			     (append (cadr file)
-				     '(())
-				     (substitute-globals 
-				      symbol-list 
-				      (cadr function))))))))
+    (declaration-line)
+    (file declaration-line #'rcons)
+    (function)
+    (file function #'rcons))
   
   (declaration-line
     (declaration \; (lambda (a b) (declare (ignore b)) a)))
 
   (declaration
-    (type var-init-list #'set-type))
+    (type var-init-list (lambda (a b) 
+			  (list 'var-line type (nreverse var-init-list)))))
   
   (var-init-list
-    (var-init-list \, var-init #'skip-and-append)
-    var-init)
+    (var-init-list \, var-init #'skip-and-rcons)
+    (var-init))
   
   (var-init
-    (pointer-declarator = initializer #'unsupported)
+    (pointer-declarator = initializer (lambda (a b c) 
+					(declare (ignore b) (list a c))))
     (pointer-declarator))
 
   (pointer-declarator
     declarator
-    (pointer declarator (lambda (pointer declarator)
-			  (declare (ignore pointer))
-			  declarator)))
+    (* pointer-declarator))
   
   (declarator
-    (identifier (lambda (identifier) 
-		  (make-symbol-info :name identifier))) 
-    (\( declarator \))
-    (declarator [ expression ] #'unsupported)
-    (declarator [ ] #'unsupported)
-    (declarator \( param-list \) #'set-function)
-    (declarator \( \) #'set-function))
-  
-  (pointer
-    (* #'unsupported)
-    (pointer * #'unsupported))
-  
+    identifier 
+    (\( declarator \) (lambda (a b c)
+			(declare (ignore a c) b)))
+    (declarator [ expression ] (lambda (a b c d)
+				 (declare (ignore b d) (list '[] a c))))
+    (declarator [ ] (lambda (a b c)
+		      (declare (ignore b c) (list '[] a))))
+    (declarator \( param-list \) (lambda (a b c d)
+				   (declare (ignore b d) (list '|()| a (nreverse c)))))
+    (declarator \( \) (lambda (a b c)
+			(declare (ignore b c) (list '|()| a)))))
+    
   (initializer
-    ({ initializer-list })
+    ({ initializer-list } (lambda (a b c)
+			    (declare (ignore a c) (cons '{} (nreverse b)))))
     expression)
   
   (initializer-list
-    (initializer-list \, initializer))
+    (initializer)
+    (initializer-list \, initializer #'skip-and-rcons))
   
   (function
-    (type pointer-declarator block #'gen-function))
+    (type pointer-declarator block (lambda (a b c)
+				     (list 'fun-definition a b c))))
   
   (type 
     char
-    (double #'unsupported)
-    (float #'unsupported)
+    double
+    float
     int
     long
     short
     void)
   
   (param-list
-    (param-list \, parameter #'skip-and-append)
+    (param-list \, parameter #'skip-and-rcons)
     parameter)
-
+;; TODO
   (parameter
     (type var-init #'set-type))
   
@@ -232,9 +216,7 @@
 		     (declare (ignore s))
 		     (gen-expression expression))))
   
-  ;; Pomimo, iz ponizsza produkcja wprowadza niejednoznacznosc,
-  ;; jest ona dopuszczalna, dzieki zdefiniowaniu priorytetow
-  ;; operatorow.
+
   (expression
     cast-expression
     (expression * expression #'to-onp)
