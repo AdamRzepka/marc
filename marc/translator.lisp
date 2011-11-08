@@ -22,6 +22,10 @@
   (declare (ignore b))
   (cons c a))
 
+(defun to-pn (a op b)
+  "Converts to polish notation"
+  (list op a b))
+
 (defun insert-after (new-element old-element list &key (test 'eql))
   "Return a list like list, but with new-element appearing after the
 first occurence of old-element. If old-element does not appear in

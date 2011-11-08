@@ -10,8 +10,8 @@
 			:serial t
 			:components
 			((:file "init")
+			 (:file "utils")
 			 (:file "translator")
 			 (:file "parser")
-			 (:file "utils")
 			 (:file "error-handler")
 			 (:file "marc")))))

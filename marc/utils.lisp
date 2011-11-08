@@ -1,5 +1,10 @@
 (in-package :marc)
 
+(defun build-syntax-tree (source)
+  (declare (type string source))
+  (create-c-lexer c-lexer)
+  (parse-with-lexer (c-lexer source) *c-parser*))
+
 (defun line-to-string (line)
   (if line
       (let ((str-line (reduce (lambda (s1 s2) 

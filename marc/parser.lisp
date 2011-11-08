@@ -25,6 +25,10 @@
 	 :initarg :line))
   (:documentation "It holds token value and some additional info (line number for now)."))
 
+(defmethod print-object ((object token-info) stream)
+  (print-unreadable-object (object stream)
+    (format stream "~s" (value object))))
+
 (define-condition lexer-error (error)
   ((sign :initarg :sign :reader sign)
    (line :initarg :line :reader line))
@@ -124,7 +128,7 @@
 
   (declaration
     (type var-init-list (lambda (a b) 
-			  (list 'var-line type (nreverse var-init-list)))))
+			  (list 'declaration-line a (nreverse b)))))
   
   (var-init-list
     (var-init-list \, var-init #'skip-and-rcons)
@@ -132,7 +136,8 @@
   
   (var-init
     (pointer-declarator = initializer (lambda (a b c) 
-					(declare (ignore b) (list a c))))
+					(declare (ignore b)) 
+					(list a c)))
     (pointer-declarator))
 
   (pointer-declarator
@@ -142,19 +147,24 @@
   (declarator
     identifier 
     (\( declarator \) (lambda (a b c)
-			(declare (ignore a c) b)))
+			(declare (ignore a c)) b))
     (declarator [ expression ] (lambda (a b c d)
-				 (declare (ignore b d) (list '[] a c))))
+				 (declare (ignore b d))
+				 (list '|[]| a c)))
     (declarator [ ] (lambda (a b c)
-		      (declare (ignore b c) (list '[] a))))
+		      (declare (ignore b c))
+		      (list '|[]| a)))
     (declarator \( param-list \) (lambda (a b c d)
-				   (declare (ignore b d) (list '|()| a (nreverse c)))))
+				   (declare (ignore b d))
+				   (list '|()| a (nreverse c))))
     (declarator \( \) (lambda (a b c)
-			(declare (ignore b c) (list '|()| a)))))
+			(declare (ignore b c))
+			(list '|()| a))))
     
   (initializer
     ({ initializer-list } (lambda (a b c)
-			    (declare (ignore a c) (cons '{} (nreverse b)))))
+			    (declare (ignore a c))
+			    (cons '{} (nreverse b))))
     expression)
   
   (initializer-list
@@ -176,136 +186,144 @@
   
   (param-list
     (param-list \, parameter #'skip-and-rcons)
-    parameter)
-;; TODO
+    (parameter))
+
   (parameter
-    (type var-init #'set-type))
+    (type var-init))
   
   (block
-    ({ } (lambda (a b) (declare (ignore a b)) '()))
-    ({ instruction-list } (lambda (a b c) (declare (ignore a c)) (list '() b)))
-    ({ declaration-list } (lambda (a b c) (declare (ignore a c)) (list b '())))
+    ({ } (lambda (a b) (declare (ignore a b)) '(new-block)))
+    ({ instruction-list } (lambda (a b c)
+			    (declare (ignore a c)) (list 'new-block '() (nreverse b))))
+    ({ declaration-list } (lambda (a b c)
+			    (declare (ignore a c)) (list 'new-block (nreverse b) '())))
     ({ declaration-list instruction-list } 
-       (lambda (a b c d) (declare (ignore a d)) (list b c))))
+       (lambda (a b c d) (declare (ignore a d)) (list 'new-block
+						      (nreverse b) (nreverse c)))))
   
   (declaration-list
-    declaration-line
-    (declaration-list declaration-line #'append-line))
+    (declaration-line)
+    (declaration-list declaration-line #'rcons))
   
   (instruction-list
-    (instruction-list instruction #'append-line)
-    instruction)
+    (instruction-list instruction #'rcons)
+    (instruction))
   
   (instruction
-    (block #'gen-block) 
+    block 
     expression-instr
     conditional
     loop
-    (return expression \; (lambda (r expression s)
-			    (declare (ignore r s))
-			    (gen-expression expression)))
+    (return expression \; (lambda (a b c)
+			    (declare (ignore c))
+			    (list a b)))
     (return \; (lambda (a b)
-		 (declare (ignore a b))
-		 nil)))
+		 (declare (ignore b))
+		 (list a))))
   
   (expression-instr
     (\; (lambda (a)
 	  (declare (ignore a))
 	  nil))
-    (expression \; (lambda (expression s) 
-		     (declare (ignore s))
-		     (gen-expression expression))))
+    (expression \; (lambda (a b) 
+		     (declare (ignore b))
+		     a)))
   
 
   (expression
     cast-expression
-    (expression * expression #'to-onp)
-    (expression / expression #'unsupported)
-    (expression % expression #'unsupported)
-    (expression + expression #'to-onp)
-    (expression - expression #'to-onp)
-    (expression << expression  #'unsupported)
-    (expression >> expression #'unsupported)
-    (expression > expression #'to-onp)
-    (expression < expression #'to-onp)
-    (expression >= expression #'to-onp)
-    (expression <= expression #'to-onp)
-    (expression == expression #'to-onp)
-    (expression != expression #'to-onp)
-    (expression & expression  #'unsupported)
-    (expression ^ expression  #'unsupported)
-    (expression \| expression  #'unsupported)
-    (expression \&\& expression  #'unsupported)
-    (expression \|\| expression  #'unsupported)
-    (unary-expression = expression 
-		      (lambda (a b c)
-			(append c a (list b))))
-    (expression \, expression #'to-onp))
+    (expression * expression #'to-pn)
+    (expression / expression #'to-pn)
+    (expression % expression #'to-pn)
+    (expression + expression #'to-pn)
+    (expression - expression #'to-pn)
+    (expression << expression  #'to-pn)
+    (expression >> expression #'to-pn)
+    (expression > expression #'to-pn)
+    (expression < expression #'to-pn)
+    (expression >= expression #'to-pn)
+    (expression <= expression #'to-pn)
+    (expression == expression #'to-pn)
+    (expression != expression #'to-pn)
+    (expression & expression  #'to-pn)
+    (expression ^ expression  #'to-pn)
+    (expression \| expression  #'to-pn)
+    (expression \&\& expression  #'to-pn)
+    (expression \|\| expression  #'to-pn)
+    (unary-expression = expression #'to-pn)
+    (expression \, expression #'to-pn))
   
   (cast-expression
     unary-expression
-    (\( type \) cast-expression #'unsupported))
+    (\( type \) cast-expression (lambda (a b c d)
+				  (declare (ignore a c))
+				  (list 'type-cast b d))))
   
   (unary-expression
     postfix-expression
-    (++ unary-expression #'unsupported)
-    (-- unary-expression #'unsupported)
+    (++ unary-expression)
+    (-- unary-expression)
     (+ cast-expression (lambda (a b) 
 			 (declare (ignore a))
 			 b))
-    (- cast-expression #'unsupported;(lambda (a b) (append b (list 'un-)))
-       )
-    (* cast-expression #'unsupported;(lambda (a b) (append b (list 'un*)))
-       )
-    (& cast-expression #'unsupported;(lambda (a b) (append b (list 'un&)))
-       )
-    (! cast-expression #'unsupported;#'swap
-       )
-    (~ cast-expression #'unsupported;#'swap
-       )
-    (sizeof unary-expressiion #'unsupported)
-    (sizeof \( lvalue \) #'unsupported))
-  
+    (- cast-expression)
+    (* cast-expression)
+    (& cast-expression)
+    (! cast-expression)
+    (~ cast-expression)
+    (sizeof unary-expression)
+    (sizeof \( type \) (lambda (a b c d)
+			   (declare (ignore b d)) (list a c))))
+
   (postfix-expression
     (postfix-expression \( expression \) 
 			(lambda (a b c d) 
 			  (declare (ignore b d))			    
-			  (append '(fun-start) c '(|()|) a)))
+			  (list '|()| a c)))
     (postfix-expression \( \) (lambda (a b c)
 				(declare (ignore b c))
- 				(append a (list '|()|))))
-    (postfix-expression [ expression ] 
-			#'unsupported)
-    (postfix-expression ++ #'unsupported)
-    (postfix-expression -- #'unsupported)
+ 				(list '|()| a)))
+    (postfix-expression [ expression ] (lambda (a b c d)
+					 (declare (ignore b d))
+					 (list '|[]| a c)))
+    (postfix-expression ++ (lambda (a b)
+			     (list b a)))
+    (postfix-expression -- (lambda (a b)
+			     (list b a)))
     highest-expression)
     
-  #|(argument-list
-    expression
-    (argument-list \, expression #'skip-and-append))|#
-  
   (highest-expression
-    (identifier (lambda (name) (list 'symbol name)))
-    (constant (lambda (value) (list 'constant value)))
-    (string-literal #'unsupported;(lambda (string) (list 'string string))
-     )
+    (identifier (lambda (a) (list 'var-name a)))
+    (constant (lambda (a) (list 'const-value a)))
+    (string-literal (lambda (a) (list 'string-const a)))
     (\( expression \) (lambda (a b c)
 			(declare (ignore a c))
 			b)))
     
   (conditional
     (if \( expression \) instruction else instruction
-	(lambda (t1 t2 expression t3 instr-if t4 instr-else)
-	  (declare (ignore t1 t2 t3 t4))
-	  (gen-if expression instr-if instr-else)))
+	(lambda (a b expression c instr-if d instr-else)
+	  (declare (ignore a b c d))
+	  (list 'if-else expression instr-if instr-else)))
     (if \( expression \) instruction
-	(lambda (t1 t2 expression t3 instr-if)
-	  (declare (ignore t1 t2 t3))
- 	  (gen-if expression instr-if))))
+	(lambda (a b expression c instr-if)
+	  (declare (ignore a b c))
+ 	  (list 'if-else expression instr-if))))
     
   (repeat
-    (for \( expression-instr expression-instr expression \) instruction)
-    (for \( expression-instr expression-instr \) instruction)
-    (while \( expression \) instruction)
-    (do instruction while \( expression \) \; #'unsupported)))
+    (for \( expression-instr expression-instr expression \) instruction
+	 (lambda (a b expr1 expr2 expr3 c instruction)
+	   (declare (ignore a b c))
+	   (list 'for-loop expr1 expr2 expr3 instruction)))
+    (for \( expression-instr expression-instr \) instruction
+	 (lambda (a b expr1 expr2 c instruction)
+	   (declare (ignore a b c))
+	   (list 'for-loop expr1 expr2 instruction)))
+    (while \( expression \) instruction (lambda (a b expression c instruction)
+					  (declare (ignore a b c))
+					  (list 'while-loop expression instruction)))
+    (do instruction while \( expression \) \;
+      (lambda (a instruction b c expression d e)
+	(declare (ignore a b c d e))
+	(list 'do-loop expression instruction)))))
 
