@@ -1,7 +1,48 @@
+;;;; Semantic analyzer and code generator
 (in-package :marc)
 
-(defstruct symbol-info
-  name type function-p init-value args address)
+;;; A few class for describing symbol table entries
+
+(defclass symbol-info ()
+  ((name :type symbol
+	 :accessor name
+	 :initarg :name))
+  (:documentation "Base class for symbol table entry"))
+
+(defclass variable-info (symbol-info)
+  ((type :accessor variable-type
+	 :initarg :type))
+  (:documentation "Variable info for symbol table"))
+
+(defclass typedef-info (variable-info)
+  ())
+
+(defclass struct-info (symbol-info)
+  ((fields :accessor fields
+	   :type list
+	   :initarg :fields)))
+
+(defclass enum-info (symbol-info)
+  ((enums :type list
+	  :accessor enums
+	  :initarg :enums)))
+
+
+(define-condition semantic-condition (error)
+  ((line :type integer
+	 :reader line
+	 :initarg :line)
+   (description :type string
+		:reader description
+		:initarg :description)
+   (severity :type integer
+	     :reader severity
+	     :initarg :severity))
+  (:report (lambda (c stream)
+	     (format stream "Line ~D: ~A" (line c) (description c)))))
+
+
+
 
 (defun unsupported (&rest a)
     (error "Unsupported construction ~S~%" a))
