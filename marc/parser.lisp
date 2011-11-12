@@ -1,4 +1,4 @@
-;;; Lexer and parser definitions.
+;;;; Lexer and parser definitions.
 
 (in-package :marc)
 

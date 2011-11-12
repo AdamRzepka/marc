@@ -27,6 +27,16 @@
 	  :accessor enums
 	  :initarg :enums)))
 
+(defmethod print-object ((object variable-info) stream)
+  (print-unreadable-object (object stream)
+    (format stream "~S ~S" (name object) (variable-type object))))
+
+(define-condition internal-error (error)
+  ((description :type string
+		:reader description
+		:initarg :description))
+  (:report (lambda (c stream)
+	     (format stream "Internal compiler error: ~A" (description c)))))
 
 (define-condition semantic-condition (error)
   ((line :type integer
@@ -41,8 +51,66 @@
   (:report (lambda (c stream)
 	     (format stream "Line ~D: ~A" (line c) (description c)))))
 
+(defun add-to-symbol-table (symbol-table symbols)
+  (declare (type hash-table symbol-table))
+  (cond ((listp symbols)
+	 (mapc (lambda (symbol) 
+		 (setf (gethash (name symbol) symbol-table) symbol)) symbols))
+	((typep symbols 'symbol-info)
+	 (setf (gethash (name symbols) symbol-table) symbols))
+	(t
+	 (error 
+	  'internal-error :description
+	  (format nil "Something strange passed to add-to-symbol-table: ~S." symbols))))
+  symbol-table)
 
+(defun analyze-file (file)
+  "FILE is a syntax tree created with build-syntax-tree"
+  (let ((symbol-table (make-hash-table))
+	result)
+    (dolist (entry file (nreverse result))
+      (multiple-value-bind (code symbols)
+	  (case (first entry)
+	    (declaration-line (analyze-declaration (rest entry) symbol-table))
+	    (fun-definition (analyze-function (rest entry) symbol-table))
+	    (t (unsupported (first entry))))
+	(push code result)
+	(add-to-symbol-table symbol-table symbols)))))
 
+(defun make-variable-info (base-type variable)
+  "Recursively adds *, [] or () to BASE-TYPE and creates variable-info instance"
+  (if (listp variable)
+      (case (first variable)
+	(* (make-variable-info (list '* base-type) (second variable)))
+	([] (make-variable-info (list '[] base-type (third variable))
+				(second variable)))
+	(|()| (make-variable-info (list '|()| base-type); TODO: add parameter info
+				  (second variable))))
+      (make-instance 'variable-info :name variable :type base-type)))
+
+(defun generate-global-declaration (variable-info) ;TODO
+  )
+
+(defun analyze-single-declaration (single-declaration base-type)
+  ;"Analyzes single declaration like a=3. SINGLE-DECLARATION would be ('a 3) for example."
+  (let ((variable-info (make-variable-info base-type (first single-declaration))))
+    (values (generate-global-declaration variable-info) variable-info)))
+
+(defun multiple-value-mapcar (function list)
+  (let (result1 result2)
+    (dolist (element list (values (nreverse result1) (nreverse result2)))
+      (multiple-value-bind (a b) (funcall function element)
+	(push a result1)
+	(push b result2)))))
+
+(defun analyze-declaration (declaration symbol-table &optional (local nil))
+  (multiple-value-mapcar (lambda (single-declaration)
+			   (analyze-single-declaration single-declaration
+						       (first declaration)))
+	  (second declaration)))
+
+(defun analyze-function (function symbol-table)
+  'function)
 
 (defun unsupported (&rest a)
     (error "Unsupported construction ~S~%" a))
@@ -58,6 +126,9 @@
 
 (defun append-line (a b)
   (append a b))
+
+(defun rcons (a b)
+  (cons b a))
 
 (defun skip-and-rcons (a b c)
   (declare (ignore b))
@@ -76,387 +147,3 @@ list, then a list returning just new-element is returned."
          (tail (rest list) (rest tail)))
         ((or (endp tail) (funcall test old-element (first head)))
          (nreconc head (cons new-element tail))))))
-
-(defun set-type (type symbol-list)
-  (mapcar (lambda (symbol) 
-	    (setf (symbol-info-type symbol) type)
-	    symbol) 
-	  symbol-list))
-
-(defun set-function (symbol a b &optional 
-		     (c nil c-supplied-p))
-  (declare (ignore a c))
-  (setf (symbol-info-function-p symbol) t)
-  (setf (symbol-info-args symbol) 
-	(if c-supplied-p
-	    b
-
-
-
-
-
-
-
-
-
-
-
-
-	    nil))
-  symbol)
-
-(defun gen-stack-addr (offset)
-  (symbolicate '|[fp, #-| (write-to-string offset) '|]|))
-
-(defun gen-register (level)
-  (symbolicate '|r| (write-to-string level)))
-
-(defun get-register-num (register)
-  (read-from-string (subseq (string register) 1)))
-
-(defun substitute-stack-variables (variables instructions)
-(labels ((find-variable (name variables)
-	   (when variables
-	     (if (eq (symbol-info-name (car variables)) name)
-		 (car variables)
-		 (find-variable name (cdr variables)))))
-	 (substitute-address (line)
-	   (let ((variable (find-variable 
-			    (cadr line) variables)))
-	     (if variable
-		 `(sub ,(cadddr line) \, |fp| \, 
-		       ,(symbolicate 
-			 '\# 
-			 (write-to-string
-			  (symbol-info-address variable))))
-		 line)))
-	 (substitute-load (line)
-	   (let ((variable (find-variable
-			    (cadr line) variables)))
-	     (if variable
-		 `(ldr ,(cadddr line) \, 
-		       ,(gen-stack-addr 
-			 (symbol-info-address 
-			  (find-variable (cadr line) 
-					 variables))))
-		 line)))
-	 (subst-line (done to-do)
-	   (if to-do
-	     (case (caar to-do)
-		   (address 
-		    (subst-line (cons 
-				 (substitute-address 
-				  (car to-do))
-				 done)
-				(cdr to-do)))
-		   (load
-		    (subst-line (cons
-				 (substitute-load
-				  (car to-do))
-				 done)
-				(cdr to-do)))
-		   (otherwise 
-		    (subst-line (cons
-				 (car to-do)
-				 done)
-				(cdr to-do))))
-	     (reverse done))))
-  (subst-line () instructions)))
-
-(defun gen-block (block &optional fun-args)
-  (let ((variables (append fun-args (car block)))
-	(instructions (cadr block)))
-    (loop for var in variables
-       for i from 1
-       do (setf (symbol-info-address var) (* 4 i)))
-    (append
-     `((str |fp| \, |[sp, #-4]!|)
-       (mov |fp| \, |sp|)
-       (sub |sp| \, |sp| \, ,(symbolicate 
-			  '\# 
-			  (write-to-string 
-			   (* 4 (length variables)))))
-       ,@(loop for arg in variables
-	    for i from 1 to (length fun-args)
-	    collecting `(str 
-			,(gen-register i) \, 
-			,(symbolicate '|[sp, #-| 
-				      (write-to-string 
-				       (* 4 i)) 
-				      '|]|))))
-     (substitute-stack-variables variables instructions)
-     '((mov |sp| \, |fp|)
-       (ldmfd |sp| \, |{fp}|)))))
-
-(defun gen-function (type symbol block)
-  (setf (symbol-info-type symbol) type)
-  (let ((fun-name (symbol-info-name symbol)))
-    `((,symbol)
-      ((|.text|)
-       (|.align| |2|)
-       (|.global| ,fun-name)
-       (|.type| ,fun-name |%function|)
-       (,(symbolicate fun-name '\:))
-       (stmfd |sp| \, |{r4-r10,lr}|)
-       ,@(gen-block block 
-		    (symbol-info-args symbol))
-       (ldmfd |sp| \, |{r4-r10,pc}|)))))
-
-(defun to-onp (a op b)
-  (append a b (list op)))
-
-(defun swap (a b)
-  (append b (list a)))
-
-(defun symbol-concat (a b)
-  (intern 
-   (concatenate 'string
-		(string a)
-		(string b))))
-
-(defun gen-symbol (onp-expr level)
-  `((,(case (caddr onp-expr)
-	    (= 'address)
-	    (un* 'address)
-	    (un& 'address)
-	    (-- 'address)
-	    (++ 'address)
-	    (post++ 'address)
-	    (post-- 'address)
-	    (|()| 'function)
-	    (otherwise 'load))
-      ,(cadr onp-expr) \,
-      ,(gen-register level))))
-
-(defun gen-constant (onp-expr level)
-  `((mov ,(gen-register level) \,
-	 ,(symbolicate '\# (write-to-string
-			    (cadr onp-expr))))))
-
-(defun gen-+ (onp-expr level)
-  (declare (ignore onp-expr))
-  `((add ,(gen-register (- level 2)) \, 
-	 ,(gen-register (- level 2)) \,
-	 ,(gen-register (1- level)))))
-
-(defun gen-- (onp-expr level)
-  (declare (ignore onp-expr))
-  `((sub ,(gen-register (- level 2)) \, 
-	 ,(gen-register (- level 2)) \,
-	 ,(gen-register (1- level)))))
-
-(defun gen-* (onp-expr level)
-  (declare (ignore onp-expr))
-  `((mul ,(gen-register (- level 2)) \, 
-	 ,(gen-register (- level 2)) \,
-	 ,(gen-register (1- level)))))
-
-(defun gen-= (onp-expr level)
-  (declare (ignore onp-expr))
-  `((str ,(gen-register (- level 2)) \,
-	 ,(symbolicate '[ 
-		       (gen-register (1- level)) 
-		       '|, #0]|))))
-
-(defun gen-funcall (onp-expr level)
-  `((function
-     ,(car onp-expr) \,
-     ,(gen-register level))))
-
-#|(defun gen-== (onp-expr level)
-  `((cmp ,(gen-register (- level 2)) \, 
-	 ,(gen-register (1- level)))
-    (moveq ,(gen-register (- level 2)) \, #1)
-    (movne ,(gen-register (- level 2)) \, #0))) |#
-
-(defmacro gen-cmp (cmp-symbol cmp-suffix n-cmp-suffix)
-  `(defun ,(symbolicate 'gen- cmp-symbol) (onp-expr level)
-     (declare (ignore onp-expr))
-     (list (list 'cmp (gen-register (- level 2)) '\, 
-		 (gen-register (1- level)))
-	   (list ',(symbolicate 'mov cmp-suffix)
-	    (gen-register (- level 2)) '\, '|#1|)
-	   (list ',(symbolicate 'mov n-cmp-suffix)
-	    (gen-register (- level 2)) '\, '|#0|))))
-
-(gen-cmp == eq ne)
-(gen-cmp != ne eq)
-(gen-cmp < lt ge)
-(gen-cmp > gt le)
-(gen-cmp <= le gt)
-(gen-cmp >= ge lt)
-
-(defmacro expr-types (onp-expr types level)
-  `(let ((next-expr (car ,onp-expr)))
-     (case next-expr
-       ,@(loop for type in types
-	      collecting
-	      `(,(car type) 
-		(append 
-		 (,(symbolicate 'gen- (car type)) 
-		   ,onp-expr ,level)
-		 (gen-expression* (cdr ,onp-expr)
-				  (+ ,level ,(cadr type))))))
-       (fun-start (gen-expression* 
-		    (insert-after 		     
-		     (count '\, 
-			    ,onp-expr :end 
-			    (position '|()| ,onp-expr))
-		     '|()|
-		     (cdr ,onp-expr))
-		    ,level))
-       (|()| (append 
-	       (gen-funcall (cdddr ,onp-expr) ,level)
-	       (gen-expression* (cddddr ,onp-expr)
-				(- ,level (cadr onp-expr)))))
-       (otherwise (gen-expression* (cdr ,onp-expr) ,level)))))
-
-(defun gen-expression* (onp-expr level)
-  (when onp-expr
-    (expr-types onp-expr 
-		((symbol 1) (constant 1) (+ -1) (- -1) (* -1)
-		 (= -1) (== -1) (!= -1) (< -1) (> -1) (<= -1)
-		 (>= -1)) 
-		level)))
-
-(defun gen-expression (expression)
-  (gen-expression* expression 0))
-
-(defun gen-if (expression instr-if &optional instr-else)
-  (let ((label1 (gensym "L"))
-	(label2 (gensym "L")))
-    (append (gen-expression expression)
-	    `((cmp |r0| \, |#0|)
-	      (beq ,label1))
-	    instr-if
-	    (when instr-else `((b ,label2)))
-	    `((,(symbolicate label1 ":")))
-	    instr-else
-	    (when instr-else 
-	      `((,(symbolicate label2 ":")))))))
-
-(defun gen-while (expression instr)
-  (let ((label1 (gensym "L"))
-	(label2 (gensym "L")))
-    (append `((,(symbolicate label1 ":")))
-	    (gen-expression expression)
-	    `((cmp |r0| \, |#0|)
-	      (beq ,label2))
-	    instr
-	    `((b ,label1))
-	    `((,(symbolicate label2 ":"))))))
-
-(defun gen-for (expr1 expr2 expr3 instr)
-  (let ((label1 (gensym "L"))
-	(label2 (gensym "L")))
-    (append (gen-expression expr1)
-	    `((,(symbolicate label1 ":")))
-	    (gen-expression expr3)
-	    (gen-expression expr2)
-	    `((cmp |r0| \, |#0|)
-	      (beq ,label2))
-	    instr
-	    `((b ,label1))
-	    `((,(symbolicate label2 ":"))))))
-
-(defun gen-global-variable (symbol)
-  (when (not (symbol-info-function-p symbol))
-      `((|.global| ,(symbol-info-name symbol))
-	(|.data|)
-	(|.align| |2|)
-	(|.type| ,(symbol-info-name symbol) \, |%object|)
-	(|.size| ,(symbol-info-name symbol) \, |4|)
-	(,(symbolicate (symbol-info-name symbol) '\:))
-	(|.word| |2|))))
-
-(defun gen-global-variables (symbol-list)
-  (reduce #'append (mapcar #'gen-global-variable 
-			   symbol-list)))
-
-(defun substitute-globals (symbol-list function-body)
-  (labels ((find-symbol-info (name symbols)
-	   (if symbols
-	     (if (eq (symbol-info-name (car symbols)) name)
-		 (car symbols)
-		 (find-symbol-info name (cdr symbols)))
-	     (error "Undeclared identifier ~a~%" name)))
-	 (substitute-address (line)
-	   (let ((symbol (find-symbol-info 
-			  (cadr line) symbol-list)))
-	     (if (not (symbol-info-function-p symbol))
-		 `(ldr ,(cadddr line) \, 
-			,(symbol-info-name symbol))
-		 (error "Identifier ~a is not variable~%" 
-			(symbol-info-name symbol)))))
-	 (substitute-load (line)
-	   (let ((symbol (find-symbol-info
-			    (cadr line) symbol-list))
-		 (register (cadddr line)))
-	     (if (not (symbol-info-function-p symbol))
-		 `((ldr ,register \, 
-			 ,(symbol-info-name symbol))
-		   (ldr ,register \, 
-			,(symbolicate '|[| register '|,#0]|)))
-		  	   
-		 (error "Identifier ~a is not variable~%" 
-			(symbol-info-name symbol)))))
-	 (substitute-funcall (line)
-	   (let* ((symbol (find-symbol-info
-			    (cadr line) symbol-list))
-		  (args-num (length (symbol-info-args symbol)))
-		  (register (cadddr line))
-		  (ret-registers 
-		   (if (> (- (get-register-num 
-				register) args-num 1) 0) 
-		     (symbolicate '|{r0-| 
-				  (gen-register 
-				   (- (get-register-num 
-				       register) args-num 1))
-				  '|}|)
-		     '|{r0}|)))
-	     (if (symbol-info-function-p symbol)
-		 `((stmfd |sp| \, 
-			  ,ret-registers)
-		   ,@(loop for i from (1- args-num) downto 0
-			for j downfrom (1- 
-					(get-register-num 
-					 register))
-			  collecting `(mov 
-				       ,(gen-register i)
-				       \,
-				       ,(gen-register j)))
-		   (bl ,(symbol-info-name symbol))
-		   (mov ,(gen-register 
-			  (- (get-register-num register) 
-			     args-num)) \, |r0|)
-		   (ldmfd |sp| \, 
-			  ,ret-registers)))))
-	 (subst-line (done to-do)
-	   (if to-do
-	     (case (caar to-do)
-		   (address 
-		    (subst-line (cons 
-				 (substitute-address 
-				  (car to-do))
-				 done)
-				(cdr to-do)))
-		   (load
-		    (subst-line (append
-				 (reverse (substitute-load
-					   (car to-do)))
-				 done)
-				(cdr to-do)))
-		   (function
-		    (subst-line (append
-				 (reverse (substitute-funcall
-					   (car to-do)))
-				 done)
-				(cdr to-do)))
-		   (otherwise 
-		    (subst-line (cons
-				 (car to-do)
-				 done)
-				(cdr to-do))))
-	     (reverse done))))
-  (subst-line () function-body)))
-
