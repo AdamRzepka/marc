@@ -60,9 +60,49 @@
 					   (regex-replace-all "_" $@ "-"))
 					  :line line-number))))
        ;; literals (integers, floats and characters)
-       ,@(loop for pattern in '("\\d*\\.\\d+([eE][+-]?\\d+)?[fFlF]?" 
+       ;; TODO: implement numeric escape sequences
+       ,@(loop for pattern in '("\\d*\\.\\d+([eE][+-]?\\d+)?[fF]" ; float
+				"\\d+\\.\\d*([eE][+-]?\\d+)?[fF]"
+				"\\d+([eE][+-]?\\d+)?[fF]"
+				"\\d*\\.\\d+([eE][+-]?\\d+)?" ; double
+				"\\d+\\.\\d*([eE][+-]?\\d+)?"
+				"\\d+[eE][+-]?\\d+"
+				"\\d*\\.\\d+([eE][+-]?\\d+)?[lL]" ; long double
+				"\\d+\\.\\d*([eE][+-]?\\d+)?[lL]"
+				"\\d+([eE][+-]?\\d+)?[lL]"
+				"'(\\.|[^\\'])'" ; char
+				"L'(\\.|[^\\']){1,2}'" ; wchar_t
+				"\\d+" "0[0-7]+" "0x|X[0-9A-Fa-f]+" ; integer
+				"'(\\.|[^\\']){2,4}'"
+				"\\d+[uU]" "0[0-7]+[uU]" "0x|X[0-9A-Fa-f]+[uU]" ; unsigned
+				"\\d+[lL]" "0[0-7]+[lL]" "0x|X[0-9A-Fa-f]+[lL]" ; long
+				"\\d+[uU][lL]" "0[0-7]+[uU][lL]" ; unsigned long
+				"0x|X[0-9A-Fa-f]+[uU][lL]" 
+				"\"(\\.|[^\\\"])*\"" ; char*
+				"L\"(\\.|[^\\\"])*\"") ; wchar_t*
+	      for type in '(float-literal float-literal float-literal
+			    double-literal double-literal double-literal
+			    long-double-literal long-double-literal long-double-literal
+			    char-literal
+			    wchar-literal
+			    int-literal int-literal int-literal
+			    int-literal
+			    unsigned-literal unsigned-literal unsigned-literal
+			    long-literal long-literal long-literal
+			    unsigned-long-literal unsigned-long-literal 
+			    unsigned-long-literal
+			    char*-literal
+			    wchar*-literal)
+	    collecting `(,pattern 
+			 (return (values 
+				  ',type
+				  (make-instance 'token-info
+						 :value (intern $@)
+						 :line line-number)))))
+
+       #|,@(loop for pattern in '("\\d*\\.\\d+([eE][+-]?\\d+)?[fFlL]?" 
 				"\\d+\\.\\d*([eE][+-]?\\d+)?[fFlL]?"
-				"\\d+([eE][+-]?\\d+)?[fFlF]?"
+				"\\d+([eE][+-]?\\d+)?[fFlL]?"
 				"\\d+[uUlL]?" "0[0-7]+[uUlL]?" "0x|X[0-9A-Fa-f]+[uUlL]?"
 				"L?'(\\.|[^\\'])+'")
 	    collecting `(,pattern 
@@ -75,7 +115,7 @@
        ("L?\"(\\.|[^\\\"])*\"" (return 
 				 (values 'string (make-instance 'token-info
 								:value (intern $@)
-								:line line-number))))
+								:line line-number))))|#
        ;; end of line
        ("\\n" (incf line-number))
        ;;other characters
@@ -109,8 +149,10 @@
   (:muffle-conflicts t)
   (:start-symbol source)
   (:terminals (char double do else float for if int long return 
-	      short sizeof void while identifier constant
-	      string << >> ++ -- \&\& \|\| <= >= == != \; { }
+	      short sizeof void while identifier float-literal double-literal
+	      long-double-literal char-literal wchar-literal int-literal
+	      unsigned-literal long-literal unsigned-long-literal char*-literal
+	      wchar*-literal << >> ++ -- \&\& \|\| <= >= == != \; { }
 	      \, = \( \) [ ] ! ~ - + * / % < > ^ \|))
   (:precedence ((:left * / %) (:left + -) (:left << >>)
                (:left < > <= >=) (:left == !=) (:left &)
@@ -297,8 +339,17 @@
     
   (highest-expression
     (identifier (lambda (a) (list 'var-name a)))
-    (constant (lambda (a) (list 'const-value a)))
-    (string-literal (lambda (a) (list 'string-const a)))
+    (float-literal (lambda (a) (list 'float-literal a)))
+    (double-literal (lambda (a) (list 'double-literal a)))
+    (long-double-literal (lambda (a) (list 'long-double-literal a)))
+    (char-literal (lambda (a) (list 'char-literal a)))
+    (wchar-literal (lambda (a) (list 'wchar-literal a)))
+    (int-literal (lambda (a) (list 'int-literal a)))
+    (unsigned-literal (lambda (a) (list 'unsigned-literal a)))
+    (long-literal (lambda (a) (list 'long-literal a)))
+    (unsigned-long-literal (lambda (a) (list 'unsigned-long-literal a)))
+    (char*-literal (lambda (a) (list 'char*-literal a)))
+    (wchar*-literal (lambda (a) (list 'wchar*-literal a)))
     (\( expression \) (lambda (a b c)
 			(declare (ignore a c))
 			b)))
