@@ -86,15 +86,22 @@
 				(second variable)))
 	(|()| (make-variable-info (list '|()| base-type); TODO: add parameter info
 				  (second variable))))
-      (make-instance 'variable-info :name variable :type base-type)))
+      (make-instance 'variable-info :name (value variable) :type base-type)))
 
-(defun generate-global-declaration (variable-info) ;TODO
-  )
+(defun generate-global-declaration (variable-info initializer) ;TODO
+  (let ((name (name variable-info)))
+    `((|.global| ,name)
+      (|.align| 2)
+      (|.type| ,name \, %object)
+      (,(symbolicate name '\:))
+      (|.word| ,initializer))))
 
 (defun analyze-single-declaration (single-declaration base-type)
   ;"Analyzes single declaration like a=3. SINGLE-DECLARATION would be ('a 3) for example."
-  (let ((variable-info (make-variable-info base-type (first single-declaration))))
-    (values (generate-global-declaration variable-info) variable-info)))
+  (let ((variable-info (make-variable-info (value base-type) (first single-declaration))))
+    (values (generate-global-declaration variable-info 
+					 (second single-declaration))
+	    variable-info)))
 
 (defun multiple-value-mapcar (function list)
   (let (result1 result2)
@@ -104,12 +111,14 @@
 	(push b result2)))))
 
 (defun analyze-declaration (declaration symbol-table &optional (local nil))
+  (declare (ignore symbol-table local))
   (multiple-value-mapcar (lambda (single-declaration)
 			   (analyze-single-declaration single-declaration
 						       (first declaration)))
 	  (second declaration)))
 
 (defun analyze-function (function symbol-table)
+  (declare (ignore function symbol-table))
   'function)
 
 (defun unsupported (&rest a)

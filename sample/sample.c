@@ -1,6 +1,6 @@
 int a, b = 5;
 float f1;
-float f2 = 3.0 + 7;
+float f2 = 3.0 + .7;
 char c = 4 +5 * 6;
 
 int main(int argc);
@@ -14,7 +14,7 @@ int g()
 {
   a = 4;
   b = 5;
-  f1 = f2 + 4.0;
+  f1 = f2 + 4.;
 }
 
 int  main(int argc)

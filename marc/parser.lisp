@@ -25,6 +25,9 @@
 	 :initarg :line))
   (:documentation "It holds token value and some additional info (line number for now)."))
 
+(defmethod value ((n (eql nil)))
+  0)
+
 (defmethod print-object ((object token-info) stream)
   (print-unreadable-object (object stream)
     (format stream "~s" (value object))))
@@ -57,10 +60,10 @@
 					   (regex-replace-all "_" $@ "-"))
 					  :line line-number))))
        ;; literals (integers, floats and characters)
-       ,@(loop for pattern in '("\\d+[uUlL]?" "0[0-7]+[uUlL]?" "0x|X[0-9A-Fa-f]+[uUlL]?"
+       ,@(loop for pattern in '("\\d*\\.\\d+([eE][+-]?\\d+)?[fFlF]?" 
 				"\\d+\\.\\d*([eE][+-]?\\d+)?[fFlL]?"
-				"\\d*\\.\\d+([eE][+-]?\\d+)?[fFlF]?" 
 				"\\d+([eE][+-]?\\d+)?[fFlF]?"
+				"\\d+[uUlL]?" "0[0-7]+[uUlL]?" "0x|X[0-9A-Fa-f]+[uUlL]?"
 				"L?'(\\.|[^\\'])+'")
 	    collecting `(,pattern 
 			 (return (values 
