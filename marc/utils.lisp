@@ -21,12 +21,18 @@
 	    (|_start:| b |main|))
 	instructions))
 
+(defun find-symbol-in-tables (symbol symbol-tables)
+  (cond
+    ((null symbol-tables) nil)
+    ((gethash symbol (first symbol-tables)))
+    (t (find-symbol-in-tables (rest symbol-tables)))))
+
 
 (defmacro define-guard-function (name (&rest arguments) guard &body body)
 "Defines function with guard. When the function is called, dispatcher seeks for function
 implementation with appriopriate guard, in order they were defined. If no function
 with appropriate guard was defined, error is raised."
-;; TODO: &rest, &key etc.
+;; TODO: &rest, &key etc. Make it more elegant :)
   (let ((function-list (symbolicate '* name '-guard-function-implementations*)))
     `(eval-when (:compile-toplevel :load-toplevel :execute)
        ,(unless (boundp function-list)
