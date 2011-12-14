@@ -71,7 +71,7 @@
 				"\\d+\\.\\d*([eE][+-]?\\d+)?[lL]"
 				"\\d+([eE][+-]?\\d+)?[lL]"
 				"'(\\.|[^\\'])'" ; char
-				"L'(\\.|[^\\']){1,2}'" ; wchar_t
+				"L'(\\.|[^\\']){1,2}'" ; unsigned short (wchar_t)
 				"\\d+" "0[0-7]+" "0x|X[0-9A-Fa-f]+" ; integer
 				"'(\\.|[^\\']){2,4}'"
 				"\\d+[uU]" "0[0-7]+[uU]" "0x|X[0-9A-Fa-f]+[uU]" ; unsigned
@@ -79,12 +79,12 @@
 				"\\d+[uU][lL]" "0[0-7]+[uU][lL]" ; unsigned long
 				"0x|X[0-9A-Fa-f]+[uU][lL]" 
 				"\"(\\.|[^\\\"])*\"" ; char*
-				"L\"(\\.|[^\\\"])*\"") ; wchar_t*
+				"L\"(\\.|[^\\\"])*\"") ; unsigned short* (wchar_t*)
 	      for type in '(float-literal float-literal float-literal
 			    double-literal double-literal double-literal
 			    long-double-literal long-double-literal long-double-literal
 			    char-literal
-			    wchar-literal
+			    unsigned-short-literal
 			    int-literal int-literal int-literal
 			    int-literal
 			    unsigned-literal unsigned-literal unsigned-literal
@@ -92,7 +92,7 @@
 			    unsigned-long-literal unsigned-long-literal 
 			    unsigned-long-literal
 			    char*-literal
-			    wchar*-literal)
+			    unsigned-short*-literal)
 	    collecting `(,pattern 
 			 (return (values 
 				  ',type
@@ -150,9 +150,9 @@
   (:start-symbol source)
   (:terminals (char double do else float for if int long return 
 	      short sizeof void while identifier float-literal double-literal
-	      long-double-literal char-literal wchar-literal int-literal
+	      long-double-literal char-literal unisgned-short-literal int-literal
 	      unsigned-literal long-literal unsigned-long-literal char*-literal
-	      wchar*-literal << >> ++ -- \&\& \|\| <= >= == != \; { }
+	      unsigned-short*-literal << >> ++ -- \&\& \|\| <= >= == != \; { }
 	      \, = \( \) [ ] ! ~ - + * / % < > ^ \|))
   (:precedence ((:left * / %) (:left + -) (:left << >>)
                (:left < > <= >=) (:left == !=) (:left &)
@@ -343,13 +343,13 @@
     (double-literal (lambda (a) (list 'double-literal a)))
     (long-double-literal (lambda (a) (list 'long-double-literal a)))
     (char-literal (lambda (a) (list 'char-literal a)))
-    (wchar-literal (lambda (a) (list 'wchar-literal a)))
+    (unsigned-short-literal (lambda (a) (list 'unsigned-short-literal a)))
     (int-literal (lambda (a) (list 'int-literal a)))
     (unsigned-literal (lambda (a) (list 'unsigned-literal a)))
     (long-literal (lambda (a) (list 'long-literal a)))
     (unsigned-long-literal (lambda (a) (list 'unsigned-long-literal a)))
     (char*-literal (lambda (a) (list 'char*-literal a)))
-    (wchar*-literal (lambda (a) (list 'wchar*-literal a)))
+    (unsigned-short*-literal (lambda (a) (list 'unsigned-short*-literal a)))
     (\( expression \) (lambda (a b c)
 			(declare (ignore a c))
 			b)))
@@ -381,3 +381,8 @@
 	(declare (ignore a b c d e))
 	(list 'do-loop expression instruction)))))
 
+
+(defun build-syntax-tree (source)
+  (declare (type string source))
+  (create-c-lexer c-lexer)
+  (parse-with-lexer (c-lexer source) *c-parser*))

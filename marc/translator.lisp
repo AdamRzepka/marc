@@ -31,6 +31,24 @@
   (print-unreadable-object (object stream)
     (format stream "~S ~S" (name object) (variable-type object))))
 
+(defclass context ()
+  "For the return, break and continue purposes."
+  ((enclosing-function :type variable-info
+		       :accessor enclosing-function
+		       :initarg :enclosing-function
+		       :initform nil)
+   (enclosing-loop :accessor enclosing-loop
+					; :type - TODO
+		   :initarg :enclosing-loop
+		   :initform nil)
+   (enclosing-switch :accessor enclosing-switch
+		     :initarg :enclosing-switch
+		     :initform nil)))
+
+(defgeneric generate-code (element children symbol-table context)
+  (:documentation "Generates code for ELEMENT and its CHILDREN using SYMBOL-TABLE and CONTEXT"))
+
+
 (define-condition internal-error (error)
   ((description :type string
 		:reader description

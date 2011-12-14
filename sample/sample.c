@@ -4,7 +4,7 @@ float f2 = 3.0 + .7;
 char c = 4 +5 * 6;
 
 int main(int argc);
-/*asd @%$*/ 
+/*komentarz*/ 
 int fun(int a, int b)
 {
   return a + b;
