@@ -25,8 +25,19 @@
 	 :initarg :line))
   (:documentation "It holds token value and some additional info (line number for now)."))
 
+(defgeneric change-token-value (token value))
+
+(defmethod change-token-value ((token token-info) value)
+  (make-instance 'token-info :value value :line (line token)))
+
+(defmethod value ((n symbol))
+  n)
+
 (defmethod value ((n (eql nil)))
   0)
+
+(defmethod value (n)
+  nil)
 
 (defmethod print-object ((object token-info) stream)
   (print-unreadable-object (object stream)
@@ -120,7 +131,7 @@
        ("\\n" (incf line-number))
        ;;other characters
        ("\\S" (with-simple-restart (continue "Continue reading input.")
-	      (error 'lexer-error :sign (character $@) :line line-number))))))
+		(error 'lexer-error :sign (character $@) :line line-number))))))
 
 (defun c-stream-lexer (stream lexer-fun)
   (labels ((reload-closure (stream) 
@@ -301,8 +312,8 @@
   (cast-expression
     unary-expression
     (\( type \) cast-expression (lambda (a b c d)
-				  (declare (ignore a c))
-				  (list 'type-cast b d))))
+				  (declare (ignore c))
+				  (list (change-token-value a 'type-cast) d b))))
   
   (unary-expression
     postfix-expression
@@ -311,9 +322,12 @@
     (+ cast-expression (lambda (a b) 
 			 (declare (ignore a))
 			 b))
-    (- cast-expression)
-    (* cast-expression)
-    (& cast-expression)
+    (- cast-expression (lambda (a b)
+			 (list (change-token-value a 'unary-) b)))
+    (* cast-expression (lambda (a b)
+			 (list (change-token-value a 'unary*) b)))
+    (& cast-expression (lambda (a b)
+			 (list (change-token-value a 'unary&) b)))
     (! cast-expression)
     (~ cast-expression)
     (sizeof unary-expression)
@@ -332,9 +346,9 @@
 					 (declare (ignore b d))
 					 (list '|[]| a c)))
     (postfix-expression ++ (lambda (a b)
-			     (list b a)))
+			     (list (change-token-value b 'post++) a)))
     (postfix-expression -- (lambda (a b)
-			     (list b a)))
+			     (list (change-token-value b 'post--) a)))
     highest-expression)
     
   (highest-expression

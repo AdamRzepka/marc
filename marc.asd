@@ -13,5 +13,7 @@
 			 (:file "translator")
 			 (:file "parser")
 			 (:file "utils")
+			 (:file "type-control")
+			 (:file "semantic-analyzer")
 			 (:file "error-handler")
 			 (:file "marc")))))

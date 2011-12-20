@@ -32,7 +32,6 @@
     (format stream "~S ~S" (name object) (variable-type object))))
 
 (defclass context ()
-  "For the return, break and continue purposes."
   ((enclosing-function :type variable-info
 		       :accessor enclosing-function
 		       :initarg :enclosing-function
@@ -43,7 +42,8 @@
 		   :initform nil)
    (enclosing-switch :accessor enclosing-switch
 		     :initarg :enclosing-switch
-		     :initform nil)))
+		     :initform nil))
+  (:documentation "For the return, break and continue purposes."))
 
 (defgeneric generate-code (element children symbol-table context)
   (:documentation "Generates code for ELEMENT and its CHILDREN using SYMBOL-TABLE and CONTEXT"))
@@ -62,12 +62,22 @@
 	 :initarg :line)
    (description :type string
 		:reader description
-		:initarg :description)
+		:initarg :description
+		:initform "Semantic error")
    (severity :type integer
 	     :reader severity
-	     :initarg :severity))
+	     :initarg :severity
+	     :initform 'error))
   (:report (lambda (c stream)
 	     (format stream "Line ~D: ~A" (line c) (description c)))))
+
+(define-condition undeclared-identifier (semantic-condition)
+  ((identifier :type symbol
+	       :reader identifier
+	       :initarg :identifier))
+  (:report (lambda (c stream)
+	     (format stream "Line ~D: Undeclared identifier '~A'" (line c) (identifier c)))))
+
 
 (defun add-to-symbol-table (symbol-table symbols)
   (declare (type hash-table symbol-table))

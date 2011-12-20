@@ -25,7 +25,7 @@
   (cond
     ((null symbol-tables) nil)
     ((gethash symbol (first symbol-tables)))
-    (t (find-symbol-in-tables (rest symbol-tables)))))
+    (t (find-symbol-in-tables symbol (rest symbol-tables)))))
 
 
 (defmacro define-guard-function (name (&rest arguments) guard &body body)
@@ -50,6 +50,11 @@ with appropriate guard was defined, error is raised."
        (setf ,function-list
 	     (nconc ,function-list (list (list (if ,guard 
 						   ,guard 
-						   ,(lambda () t))
+						   (lambda (&rest args)
+						     (declare (ignore args)) t))
 					       (lambda ,arguments
 						 ,@body))))))))
+(defmacro clear-guard-function (name)
+  (let ((function-list (symbolicate '* name '-guard-function-implementations*)))
+    (when (boundp function-list)
+      `(setf ,function-list nil))))
