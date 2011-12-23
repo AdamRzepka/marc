@@ -1,9 +1,9 @@
-int a, b = 5;
+int a[3], b = 5;
 float f1;
 float f2 = 3.0 + .7;
 char c = 4 +5 * 6;
 
-int main(int argc);
+int main(int argc, char** argv);
 /*komentarz*/ 
 int fun(int a, int b)
 {

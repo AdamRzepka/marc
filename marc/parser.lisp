@@ -245,7 +245,7 @@
     (parameter))
 
   (parameter
-    (type var-init))
+    (type var-init (lambda (a b) (list a (list b)))))
   
   (block
     ({ } (lambda (a b) (declare (ignore a b)) '(new-block)))

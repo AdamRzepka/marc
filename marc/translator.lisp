@@ -11,7 +11,10 @@
 
 (defclass variable-info (symbol-info)
   ((type :accessor variable-type
-	 :initarg :type))
+	 :initarg :type)
+   (scope :type symbol
+	  :accessor scope
+	  :initarg :scope))
   (:documentation "Variable info for symbol table"))
 
 (defclass typedef-info (variable-info)
@@ -26,6 +29,17 @@
   ((enums :type list
 	  :accessor enums
 	  :initarg :enums)))
+
+(defgeneric function-info-p (obj)
+  (:documentation "Checks whether variable-info is function info."))
+
+(defmethod function-info-p ((obj symbol-info))
+  nil)
+
+(defmethod function-info-p ((obj variable-info))
+  (let ((type (variable-type obj)))
+    (and (listp type)
+	 (eq (first type) '|()|))))
 
 (defmethod print-object ((object variable-info) stream)
   (print-unreadable-object (object stream)
@@ -44,10 +58,6 @@
 		     :initarg :enclosing-switch
 		     :initform nil))
   (:documentation "For the return, break and continue purposes."))
-
-(defgeneric generate-code (element children symbol-table context)
-  (:documentation "Generates code for ELEMENT and its CHILDREN using SYMBOL-TABLE and CONTEXT"))
-
 
 (define-condition internal-error (error)
   ((description :type string
@@ -79,75 +89,91 @@
 	     (format stream "Line ~D: Undeclared identifier '~A'" (line c) (identifier c)))))
 
 
-(defun add-to-symbol-table (symbol-table symbols)
-  (declare (type hash-table symbol-table))
+(defun add-to-symbol-table (symbol-tables symbols)
+  "SYMBOL-TABLES is a stack of symbol tables from all accessible scopes.
+First table in this list is current scope table. SYMBOLS may be single symbol,
+or list of symbols."
+  (declare (type list symbol-tables))
   (cond ((listp symbols)
 	 (mapc (lambda (symbol) 
-		 (setf (gethash (name symbol) symbol-table) symbol)) symbols))
+		 (setf (gethash (name symbol) (first symbol-tables)) symbol)) symbols))
 	((typep symbols 'symbol-info)
-	 (setf (gethash (name symbols) symbol-table) symbols))
+	 (setf (gethash (name symbols) (first symbol-tables)) symbols))
 	(t
 	 (error 
 	  'internal-error :description
 	  (format nil "Something strange passed to add-to-symbol-table: ~S." symbols))))
-  symbol-table)
+  symbol-tables)
 
 (defun analyze-file (file)
   "FILE is a syntax tree created with build-syntax-tree"
-  (let ((symbol-table (make-hash-table))
+  (let ((symbol-tables (list (make-hash-table)))
 	result)
-    (dolist (entry file (nreverse result))
-      (multiple-value-bind (code symbols)
-	  (case (first entry)
-	    (declaration-line (analyze-declaration (rest entry) symbol-table))
-	    (fun-definition (analyze-function (rest entry) symbol-table))
-	    (t (unsupported (first entry))))
-	(push code result)
-	(add-to-symbol-table symbol-table symbols)))))
+    (dolist (entry file (list (nreverse result) symbol-tables))
+      (case (first entry)
+	(declaration-line
+	 (let ((declaration-list
+		(analyze-declaration-line (rest entry) symbol-tables 'global)))
+	   (mapc (lambda (declaration) (when declaration (push declaration result)))
+		 (first declaration-list))
+	   (add-to-symbol-table symbol-tables (second declaration-list))))
+	(fun-definition
+	 (let ((function (analyze-function (rest entry) symbol-tables)))
+	   (push (first function) result)
+	   (add-to-symbol-table symbol-tables (second function))))
+	(t (unsupported (first entry)))))))
 
-(defun make-variable-info (base-type variable)
+(defun make-variable-info (base-type variable scope)
   "Recursively adds *, [] or () to BASE-TYPE and creates variable-info instance"
   (if (listp variable)
-      (case (first variable)
-	(* (make-variable-info (list '* base-type) (second variable)))
+      (case (value (first variable))
+	(* (make-variable-info (list '* base-type) (second variable) scope))
 	([] (make-variable-info (list '[] base-type (third variable))
-				(second variable)))
-	(|()| (make-variable-info (list '|()| base-type); TODO: add parameter info
-				  (second variable))))
-      (make-instance 'variable-info :name (value variable) :type base-type)))
+				(second variable) scope))
+	(|()| (make-variable-info (list '|()| base-type
+					(mapcan (lambda (arg)
+						  (second
+						   (analyze-declaration-line arg nil 'argument)))
+						(third variable)))
+				  (second variable) scope)))
+      (make-instance 'variable-info :name (value variable) :type base-type :scope scope)))
 
-(defun generate-global-declaration (variable-info initializer) ;TODO
-  (let ((name (name variable-info)))
-    `((|.global| ,name)
-      (|.align| 2)
-      (|.type| ,name \, %object)
-      (,(symbolicate name '\:))
-      (|.word| ,initializer))))
+(defun analyze-initializer (initializer type symbol-tables scope) ;TODO
+  (declare (ignore type symbol-tables scope))
+  initializer)
 
-(defun analyze-single-declaration (single-declaration base-type)
-  ;"Analyzes single declaration like a=3. SINGLE-DECLARATION would be ('a 3) for example."
-  (let ((variable-info (make-variable-info (value base-type) (first single-declaration))))
-    (values (generate-global-declaration variable-info 
-					 (second single-declaration))
-	    variable-info)))
+(defun analyze-single-declaration (single-declaration base-type symbol-tables scope)
+  "Analyzes single declaration like a=3. SINGLE-DECLARATION would be ('a 3) for example."
+  (let ((variable-info (make-variable-info (value base-type) (first single-declaration) scope)))
+    (list (unless (function-info-p variable-info)
+	    (list (symbolicate scope '-declaration) variable-info 
+		  (analyze-initializer (second single-declaration)
+				       (variable-type variable-info)
+				       symbol-tables
+				       scope)))
+	  variable-info)))
 
-(defun multiple-value-mapcar (function list)
-  (let (result1 result2)
-    (dolist (element list (values (nreverse result1) (nreverse result2)))
-      (multiple-value-bind (a b) (funcall function element)
-	(push a result1)
-	(push b result2)))))
+(defun transpose-pairs-list (pairs)
+  "Transforms list of pairs into two list of single elements."
+  (declare (type list pairs))
+  (let ((result (list () ())))
+    (dolist (element pairs (mapcar #'nreverse result))
+      (push (first element) (first result))
+      (push (second element) (second result)))))
 
-(defun analyze-declaration (declaration symbol-table &optional (local nil))
-  (declare (ignore symbol-table local))
-  (multiple-value-mapcar (lambda (single-declaration)
-			   (analyze-single-declaration single-declaration
-						       (first declaration)))
-	  (second declaration)))
+(defun analyze-declaration-line (declaration symbol-tables scope)
+  (transpose-pairs-list
+   (mapcar (lambda (single-declaration)
+	     (analyze-single-declaration single-declaration
+					 (first declaration)
+					 symbol-tables
+					 scope))
+	   (second declaration))))
 
-(defun analyze-function (function symbol-table)
-  (declare (ignore function symbol-table))
-  'function)
+(defun analyze-function (function symbol-tables)
+  (let ((function-info (make-variable-info (value (first function)) (second function) 'global)))
+    (list (list 'fun-definition function-info (third function))
+	  function-info)))
 
 (defun unsupported (&rest a)
     (error "Unsupported construction ~S~%" a))

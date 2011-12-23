@@ -12,7 +12,7 @@
   (handler-bind ((yacc-parse-error #'handle-parse-error
 		  ;(lambda (c) (invoke-restart 'try-to-recover))
 		  ))
-    (analyze-semantic (parse-with-lexer (c-lexer (read-file stream)) *c-parser*) nil nil)))
+    (parse-with-lexer (c-lexer (read-file stream)) *c-parser*) nil nil))
 
 (defun compile-c-file (in out)
   (with-open-file 
