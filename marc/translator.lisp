@@ -88,6 +88,15 @@
   (:report (lambda (c stream)
 	     (format stream "Line ~D: Undeclared identifier '~A'" (line c) (identifier c)))))
 
+(define-condition type-convert-condition (semantic-condition)
+  ((source-type :reader source-type
+		:initarg :source-type)
+   (destination-type :reader destination-type
+		     :initarg :destination-type))
+  (:report (lambda (c stream)
+	     (format stream "Line ~D: Can not convert from ~A to ~A" (line c) (source-type c)
+		     (destination-type c)))))
+
 
 (defun add-to-symbol-table (symbol-tables symbols)
   "SYMBOL-TABLES is a stack of symbol tables from all accessible scopes.
@@ -113,14 +122,16 @@ or list of symbols."
       (case (first entry)
 	(declaration-line
 	 (let ((declaration-list
-		(analyze-declaration-line (rest entry) symbol-tables 'global)))
+		(analyze-declaration-line entry symbol-tables 'global)))
 	   (mapc (lambda (declaration) (when declaration (push declaration result)))
 		 (first declaration-list))
 	   (add-to-symbol-table symbol-tables (second declaration-list))))
 	(fun-definition
-	 (let ((function (analyze-function (rest entry) symbol-tables)))
+	 (let ((function (analyze-function entry symbol-tables)))
 	   (push (first function) result)
-	   (add-to-symbol-table symbol-tables (second function))))
+	   (mapc (lambda (instruction) (push instruction result))
+		 (second function))
+	   (add-to-symbol-table symbol-tables (third function))))
 	(t (unsupported (first entry)))))))
 
 (defun make-variable-info (base-type variable scope)
@@ -133,7 +144,7 @@ or list of symbols."
 	(|()| (make-variable-info (list '|()| base-type
 					(mapcan (lambda (arg)
 						  (second
-						   (analyze-declaration-line arg nil 'argument)))
+						   (analyze-declaration-line (cons 'declaration-line arg) nil 'argument)))
 						(third variable)))
 				  (second variable) scope)))
       (make-instance 'variable-info :name (value variable) :type base-type :scope scope)))
@@ -165,15 +176,50 @@ or list of symbols."
   (transpose-pairs-list
    (mapcar (lambda (single-declaration)
 	     (analyze-single-declaration single-declaration
-					 (first declaration)
+					 (second declaration)
 					 symbol-tables
 					 scope))
-	   (second declaration))))
+	   (third declaration))))
 
 (defun analyze-function (function symbol-tables)
-  (let ((function-info (make-variable-info (value (first function)) (second function) 'global)))
-    (list (list 'fun-definition function-info (third function))
+  (let ((function-info (make-variable-info (value (second function)) (third function) 'global)))
+    (list (list 'fun-definition
+		function-info)
+	  (analyze-block (fourth function)
+			 symbol-tables ;TODO add arguments
+			 (make-instance 'context
+					:enclosing-function function-info))
 	  function-info)))
+
+(defun analyze-block (block symbol-tables context)
+  (declare (type context context))
+  (push (make-hash-table) symbol-tables)
+  (let (result)
+    (push '(begin) result)
+    (dolist (declaration-line (second block))
+      (let ((analyzed-line (analyze-declaration-line declaration-line
+						     symbol-tables
+						     'local)))
+	(add-to-symbol-table symbol-tables (second analyzed-line))
+	(mapc (lambda (declaration) (push declaration result))
+	      (first analyzed-line))))
+    (dolist (instruction-line (third block))
+      (push (analyze-instruction instruction-line symbol-tables context)
+	    result))
+    (push '(end) result)
+    (pop symbol-tables)
+    (nreverse result)))
+
+(defun analyze-instruction (instruction symbol-tables context)
+  (case (value (first instruction))
+    (new-block (analyze-block instruction symbol-tables context))
+    (expression (analyze-expression (second instruction) symbol-tables))
+    (if-else instruction)
+    (for-loop instruction)
+    (while-loop instruction)
+    (do-loop instruction)
+    (return instruction)
+    (otherwise nil)))
 
 (defun unsupported (&rest a)
     (error "Unsupported construction ~S~%" a))

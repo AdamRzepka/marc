@@ -13,7 +13,7 @@
  (define-constant +tokens+ '((char double do else float for if int long return 
 			  short sizeof void while)
 			 (<= >= == != \; { } \, = \( \) [ ] ! ~ -- ++ - + * /
-			  % < > ^ \|\| \&\& \| \&)
+			  % < > ^ \|\| \&\& \| \& |...|)
 			 (identifier constant string)) :test #'equal))
 
 (defclass token-info ()
@@ -164,7 +164,7 @@
 	      long-double-literal char-literal unisgned-short-literal int-literal
 	      unsigned-literal long-literal unsigned-long-literal char*-literal
 	      unsigned-short*-literal << >> ++ -- \&\& \|\| <= >= == != \; { }
-	      \, = \( \) [ ] ! ~ - + * / % < > ^ \|))
+	      \, = \( \) [ ] ! ~ - + * / % < > ^ \| |...|))
   (:precedence ((:left * / %) (:left + -) (:left << >>)
                (:left < > <= >=) (:left == !=) (:left &)
                (:left ^) (:left \|) (:left \&\&) (:left \|\|)
@@ -242,6 +242,9 @@
   
   (param-list
     (param-list \, parameter #'skip-and-rcons)
+    (param-list \, |...| (lambda (a b c)
+			   (declare (ignore b c))
+			   (cons `(|...| ((|...|))) a)))
     (parameter))
 
   (parameter
@@ -283,7 +286,7 @@
 	  nil))
     (expression \; (lambda (a b) 
 		     (declare (ignore b))
-		     a)))
+		     (list 'expression a))))
   
 
   (expression
@@ -337,11 +340,11 @@
   (postfix-expression
     (postfix-expression \( expression \) 
 			(lambda (a b c d) 
-			  (declare (ignore b d))			    
-			  (list '|()| a c)))
+			  (declare (ignore d))			    
+			  (list (change-token-value b '|()|) a c)))
     (postfix-expression \( \) (lambda (a b c)
-				(declare (ignore b c))
- 				(list '|()| a)))
+				(declare (ignore c))
+ 				(list (change-token-value b '|()|) a)))
     (postfix-expression [ expression ] (lambda (a b c d)
 					 (declare (ignore b d))
 					 (list '|[]| a c)))
@@ -378,7 +381,7 @@
 	  (declare (ignore a b c))
  	  (list 'if-else expression instr-if))))
     
-  (repeat
+  (loop
     (for \( expression-instr expression-instr expression \) instruction
 	 (lambda (a b expr1 expr2 expr3 c instruction)
 	   (declare (ignore a b c))

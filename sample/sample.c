@@ -12,17 +12,17 @@ int fun(int a, int b)
 
 int g()
 {
-  a = 4;
+  d = 4;
   b = 5;
-  f1 = f2 + 4.;
+  f1 = f2 + 4.f;
 }
 
-int  main(int argc)
+int  main(int argc, ...)
 {
   int a;
   int b;
   b = 1;
-  a = b + 4 * (5 / a) - fun(3 + 4, 2);
+  a = b + 4 * (5 / a) - fun(3 + 4, 2, 4);
   if (a == 4)
   {
     b =4 + 5;

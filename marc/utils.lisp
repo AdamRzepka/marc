@@ -27,6 +27,19 @@
     ((gethash symbol (first symbol-tables)))
     (t (find-symbol-in-tables symbol (rest symbol-tables)))))
 
+(defmacro define-guard-function-family (name (&rest arguments))
+  (let ((function-list (symbolicate '* name '-guard-function-implementations*)))
+    `(eval-when (:compile-toplevel :load-toplevel :execute)
+       (defparameter ,function-list nil)
+       (defun ,name ,arguments
+	 (let (result)
+	   (loop for element in ,function-list
+	      while (null result)
+	      do (when (funcall (first element) ,@arguments)			       
+		   (setf result (funcall (second element) ,@arguments))))
+	   (if result
+	       result
+	       (error "No function with appropriate guards found.")))))))
 
 (defmacro define-guard-function (name (&rest arguments) guard &body body)
 "Defines function with guard. When the function is called, dispatcher seeks for function
@@ -34,27 +47,10 @@ implementation with appriopriate guard, in order they were defined. If no functi
 with appropriate guard was defined, error is raised."
 ;; TODO: &rest, &key etc. Make it more elegant :)
   (let ((function-list (symbolicate '* name '-guard-function-implementations*)))
-    `(eval-when (:compile-toplevel :load-toplevel :execute)
-       ,(unless (boundp function-list)
-		`(defvar ,function-list nil))
-       ,(unless (fboundp name)
-		`(defun ,name ,arguments
-		   (let (found)
-		     (loop for element in ,function-list
-			while (null found)
-			do (when (funcall (first element) ,@arguments)			       
-			     (setf found t)
-			     (funcall (second element) ,@arguments)))
-		     (unless found
-		       (error "No function with appropriate guards found.")))))
-       (setf ,function-list
-	     (nconc ,function-list (list (list (if ,guard 
-						   ,guard 
-						   (lambda (&rest args)
-						     (declare (ignore args)) t))
-					       (lambda ,arguments
-						 ,@body))))))))
-(defmacro clear-guard-function (name)
-  (let ((function-list (symbolicate '* name '-guard-function-implementations*)))
-    (when (boundp function-list)
-      `(setf ,function-list nil))))
+    `(setf ,function-list
+	   (nconc ,function-list (list (list (if ,guard 
+						 ,guard 
+						 (lambda (&rest args)
+						   (declare (ignore args)) t))
+					     (lambda ,arguments
+					       ,@body)))))))
