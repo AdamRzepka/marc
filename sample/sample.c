@@ -12,17 +12,17 @@ int fun(int a, int b)
 
 int g()
 {
-  d = 4;
+  /*  d = 4;*/
   b = 5;
   f1 = f2 + 4.f;
 }
 
-int  main(int argc, ...)
+int  main(int argc, char** argv)
 {
   int a;
   int b;
   b = 1;
-  a = b + 4 * (5 / a) - fun(3 + 4, 2, 4);
+  a = b + 4 * (5 / a) - fun(3 + 4, 2);
   if (a == 4)
   {
     b =4 + 5;

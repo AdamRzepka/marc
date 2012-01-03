@@ -118,20 +118,20 @@ or list of symbols."
   "FILE is a syntax tree created with build-syntax-tree"
   (let ((symbol-tables (list (make-hash-table)))
 	result)
-    (dolist (entry file (list (nreverse result) symbol-tables))
+    (dolist (entry file (list (flatten-syntax-tree (nreverse result)) symbol-tables))
       (case (first entry)
 	(declaration-line
 	 (let ((declaration-list
 		(analyze-declaration-line entry symbol-tables 'global)))
-	   (mapc (lambda (declaration) (when declaration (push declaration result)))
-		 (first declaration-list))
+	   ;; (mapc (lambda (declaration) (when declaration (push declaration result)))
+	   ;; 	 (first declaration-list))
+	   (push (first declaration-list) result)
 	   (add-to-symbol-table symbol-tables (second declaration-list))))
 	(fun-definition
 	 (let ((function (analyze-function entry symbol-tables)))
 	   (push (first function) result)
-	   (mapc (lambda (instruction) (push instruction result))
-		 (second function))
-	   (add-to-symbol-table symbol-tables (third function))))
+;	   (mapc (lambda (instruction) (push instruction result)) (second function))
+	   (add-to-symbol-table symbol-tables (second function))))
 	(t (unsupported (first entry)))))))
 
 (defun make-variable-info (base-type variable scope)
@@ -182,47 +182,93 @@ or list of symbols."
 	   (third declaration))))
 
 (defun analyze-function (function symbol-tables)
-  (let ((function-info (make-variable-info (value (second function)) (third function) 'global)))
-    (list (list 'fun-definition
-		function-info)
-	  (analyze-block (fourth function)
-			 symbol-tables ;TODO add arguments
-			 (make-instance 'context
-					:enclosing-function function-info))
-	  function-info)))
+  (flet ((add-params-to-symbol-tables (symbol-tables params)
+	   (add-to-symbol-table (cons (make-hash-table) symbol-tables)
+				params)))
+    (let ((function-info (make-variable-info (value (second function)) (third function) 'global)))
+      (list (list (list 'fun-definition
+			function-info)
+		  (first
+		   (analyze-block (fourth function)
+				  (add-params-to-symbol-tables symbol-tables
+							       (third (variable-type function-info)))
+				  (make-instance 'context
+						 :enclosing-function function-info))))
+	    function-info))))
 
 (defun analyze-block (block symbol-tables context)
   (declare (type context context))
-  (push (make-hash-table) symbol-tables)
-  (let (result)
-    (push '(begin) result)
-    (dolist (declaration-line (second block))
-      (let ((analyzed-line (analyze-declaration-line declaration-line
-						     symbol-tables
-						     'local)))
-	(add-to-symbol-table symbol-tables (second analyzed-line))
-	(mapc (lambda (declaration) (push declaration result))
-	      (first analyzed-line))))
-    (dolist (instruction-line (third block))
-      (push (analyze-instruction instruction-line symbol-tables context)
-	    result))
-    (push '(end) result)
-    (pop symbol-tables)
-    (nreverse result)))
+  (let ((block-symbol-tables (cons (make-hash-table) symbol-tables)))
+    (list (list '(begin)
+		(mapcar (lambda (declaration-line)
+			  (let ((analyzed-line (analyze-declaration-line declaration-line
+									 block-symbol-tables
+									 'local)))
+			    (add-to-symbol-table block-symbol-tables (second analyzed-line))
+			    (first analyzed-line)))
+			(second block))
+		(mapcar (lambda (instruction-line)
+			  (let ((analyzed-line (analyze-instruction instruction-line
+								    block-symbol-tables
+								    context)))
+			    (setf block-symbol-tables (second analyzed-line))
+			    (first analyzed-line)))
+			(third block))
+		'(end))
+	  symbol-tables)))
 
 (defun analyze-instruction (instruction symbol-tables context)
   (case (value (first instruction))
     (new-block (analyze-block instruction symbol-tables context))
-    (expression (analyze-expression (second instruction) symbol-tables))
-    (if-else instruction)
+    (expression (let ((expression (analyze-expression (second instruction)
+						      symbol-tables)))
+		  (list (list (first expression)			      
+			      '(clear-registers-counter))
+			symbol-tables)))
+    (if-else (analyze-if-else instruction symbol-tables context))
     (for-loop instruction)
     (while-loop instruction)
     (do-loop instruction)
-    (return instruction)
+    (return (analyze-return instruction symbol-tables context))
     (otherwise nil)))
+
+(defun analyze-if-else (syntax-subtree symbol-tables context)
+  (let ((else-label (genlabel))
+	(end-label (genlabel)))
+    (let* ((test-expression (analyze-expression (second syntax-subtree)
+						symbol-tables))
+	   (modified-symbol-tables (second test-expression))
+	   (if-instruction (analyze-instruction (third syntax-subtree)
+						modified-symbol-tables
+						context))
+	   (else-instruction (analyze-instruction (fourth syntax-subtree)
+						  modified-symbol-tables
+						  context)))
+      (list (list (first test-expression)
+		  '(test)
+		  '(clear-registers-counter)
+		  `(jump-if ne ,else-label)
+		  (first if-instruction)
+		  `(jump ,end-label)
+		  `(insert-label ,else-label)
+		  (first else-instruction)
+		  `(insert-label ,end-label))
+	    modified-symbol-tables))))
+
+(defun analyze-return (syntax-subtree symbol-tables context)
+  (let ((expression (analyze-expression (second syntax-subtree)
+					symbol-tables)))
+    (unless (equal (third expression) (second (variable-type (enclosing-function context))))
+      (error "Types must be identical for now"))
+    (list (list (first expression)
+		'(return))
+	  symbol-tables)))
 
 (defun unsupported (&rest a)
     (error "Unsupported construction ~S~%" a))
+
+(defun genlabel ()
+  (gensym ".L"))
 
 (defun add-element (list a &optional (b nil b-supplied-p))
   (if b-supplied-p

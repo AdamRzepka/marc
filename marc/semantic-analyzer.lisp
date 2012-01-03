@@ -223,7 +223,8 @@
 						     'global)))))
       (list (list (list 'save-registers)
 		  (analyze-args (third (variable-type function-info)) arg-list)
-		  (list '|()| function-info))
+		  (list '|()| function-info)
+		  (list 'load-registers))
 	    symbol-tables (second (variable-type function-info))))))
 
 ;;; TODO check if type exists
@@ -248,3 +249,12 @@ of the expression."
 	  (setf modified-tables (second child)))
 	(push element modified-subtree)))))
 
+(defun flatten-syntax-tree (syntax-tree)
+  (labels ((visit-list (syntax-tree output-list)
+	     (cond
+	       ((null syntax-tree) output-list)
+	       ((and (first syntax-tree) (symbolp (first syntax-tree)))
+		(cons syntax-tree output-list))
+	       (t (visit-list (rest syntax-tree)
+			      (visit-list (first syntax-tree) output-list))))))
+    (nreverse (visit-list syntax-tree nil))))
