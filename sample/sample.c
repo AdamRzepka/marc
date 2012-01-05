@@ -2,6 +2,7 @@ int a[3], b = 5;
 float f1;
 float f2 = 3.0 + .7;
 char c = 4 +5 * 6;
+short s = 2;
 
 int main(int argc, char** argv);
 /*komentarz*/ 
@@ -26,12 +27,15 @@ int  main(int argc, char** argv)
   if (a == 4)
   {
     b =4 + 5;
+    return 1;
   }
   else
   {
     b = b + 1;
     b = b - 1;
-  }  
+  }
+
+  a = b;
   return 0;
 }
 

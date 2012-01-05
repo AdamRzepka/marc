@@ -229,7 +229,7 @@
   
   (function
     (type pointer-declarator block (lambda (a b c)
-				     (list 'fun-definition a b c))))
+				     (list 'function-definition a b c))))
   
   (type 
     char

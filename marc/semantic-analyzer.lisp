@@ -8,13 +8,28 @@
 
 (define-constant +arithmetic-types+ (append +integer-types+ +float-types+) :test #'equal)
 
+(define-constant +builtin-type-sizes+
+    '((char . 1) (unsigned-char . 1)
+      (short . 2) (unsigned-short . 2)
+      (int . 4) (unsigned-int . 4) (long . 4) (unsigned-long . 4)
+      (float . 4) (double . 4) (long-double . 4)) :test #'equal)
+
+
+(defun type-size (type)
+  (if (listp type)
+      (case (first type)
+	(* 4)
+	(t 4)) ;
+      (cdr (assoc type +builtin-type-sizes+))))
+
 (defun pack-lvalue (syntax-subtree type line)
-  (when (or (null (find (value (first syntax-subtree))
-			'(load-word load-half-word load-byte load-float unary* [] ++ --)))
+  (when (or (and (null (find (value (first syntax-subtree)) '(unary* [] ++ --)))
+		 (null (search "LOAD-" (string (value (first syntax-subtree))))))
 	    (and (listp type) (eq (first type) '[])))
     (with-simple-restart (continue "Continue.")
-      (error 'semantic-condition :line line :description "lvalue expected")))
-  (list 'load-address (second syntax-subtree)))
+      (error 'semantic-condition :line line :description "l-value expected")))
+  (let ((variable (second syntax-subtree)))
+    (list (symbolicate 'load- (scope variable) '-address) variable)))
 
 (defun convert-types (source-type destination-type expression line)
   (cond
@@ -77,7 +92,7 @@
 	(t type))
       (case type
 	((int unsigned-int long unsigned-long) 'word)
-	((short unsigned-short) 'half-word)
+	((short unsigned-short) 'short)
 	((char unsigned-char) 'byte)
 	((float double long-double) 'float))))
 
@@ -115,7 +130,12 @@
 	    (setf symbol (find-symbol-in-tables (value token)
 						symbol-tables)))))
     (let ((type (variable-type symbol)))
-      (list (list (symbolicate 'load- (target-type type))
+      (list (list (symbolicate 'load-
+			       (if (eq (scope symbol) 'global)
+				   'global
+				   'local)
+			       '-
+			       (target-type type))
 		  symbol)
 	    symbol-tables
 	    type))))

@@ -14,7 +14,12 @@
 	 :initarg :type)
    (scope :type symbol
 	  :accessor scope
-	  :initarg :scope))
+	  :initarg :scope)
+   (address :type integer		; offset from fp - for stack variables only
+	    :accessor address
+	    :initarg :address
+	    :initform nil))
+  
   (:documentation "Variable info for symbol table"))
 
 (defclass typedef-info (variable-info)
@@ -56,8 +61,21 @@
 		   :initform nil)
    (enclosing-switch :accessor enclosing-switch
 		     :initarg :enclosing-switch
-		     :initform nil))
+		     :initform nil)
+   (enclosing-blocks-count :type integer
+			   :accessor enclosing-blocks-count
+			   :initform 0))
   (:documentation "For the return, break and continue purposes."))
+
+(defgeneric inc-blocks-count (context))
+
+(defmethod inc-blocks-count ((context context))
+  (incf (enclosing-blocks-count context)))
+
+(defgeneric dec-blocks-count (context))
+
+(defmethod dec-blocks-count ((context context))
+  (decf (enclosing-blocks-count context)))
 
 (define-condition internal-error (error)
   ((description :type string
@@ -118,7 +136,7 @@ or list of symbols."
   "FILE is a syntax tree created with build-syntax-tree"
   (let ((symbol-tables (list (make-hash-table)))
 	result)
-    (dolist (entry file (list (flatten-syntax-tree (nreverse result)) symbol-tables))
+    (dolist (entry file (flatten-syntax-tree (nreverse result)))
       (case (first entry)
 	(declaration-line
 	 (let ((declaration-list
@@ -127,7 +145,7 @@ or list of symbols."
 	   ;; 	 (first declaration-list))
 	   (push (first declaration-list) result)
 	   (add-to-symbol-table symbol-tables (second declaration-list))))
-	(fun-definition
+	(function-definition
 	 (let ((function (analyze-function entry symbol-tables)))
 	   (push (first function) result)
 ;	   (mapc (lambda (instruction) (push instruction result)) (second function))
@@ -144,7 +162,8 @@ or list of symbols."
 	(|()| (make-variable-info (list '|()| base-type
 					(mapcan (lambda (arg)
 						  (second
-						   (analyze-declaration-line (cons 'declaration-line arg) nil 'argument)))
+						   (analyze-declaration-line
+						    (cons 'declaration-line arg) nil 'argument)))
 						(third variable)))
 				  (second variable) scope)))
       (make-instance 'variable-info :name (value variable) :type base-type :scope scope)))
@@ -153,11 +172,33 @@ or list of symbols."
   (declare (ignore type symbol-tables scope))
   initializer)
 
+(defun allocate-stack-variables (symbol-tables scope)
+  (let ((next-address 0))
+    (flet ((increment-address (size)
+	     (setf next-address
+		   (cond ((eq scope 'local)
+			  (- next-address size))
+			 ((eq scope 'argument)
+			  (if (= next-address 16)
+			      48		; skipping saved registers
+			      (+ next-address 4)))
+			 (t (error 'internal-error :description
+				   "Strange scope passed to alocate-stack-variable."))))))
+      (with-hash-table-iterator (next (first symbol-tables))
+	(loop
+	   (multiple-value-bind (more? key value) (next)
+	     (declare (ignore key))
+	     (unless more? (return))
+	     (increment-address (type-size (variable-type value)))
+	     (setf (address value) next-address))))))
+  symbol-tables)
+
 (defun analyze-single-declaration (single-declaration base-type symbol-tables scope)
   "Analyzes single declaration like a=3. SINGLE-DECLARATION would be ('a 3) for example."
   (let ((variable-info (make-variable-info (value base-type) (first single-declaration) scope)))
     (list (unless (function-info-p variable-info)
-	    (list (symbolicate scope '-declaration) variable-info 
+	    (list (symbolicate scope '-declaration)
+		  variable-info
 		  (analyze-initializer (second single-declaration)
 				       (variable-type variable-info)
 				       symbol-tables
@@ -186,36 +227,46 @@ or list of symbols."
 	   (add-to-symbol-table (cons (make-hash-table) symbol-tables)
 				params)))
     (let ((function-info (make-variable-info (value (second function)) (third function) 'global)))
-      (list (list (list 'fun-definition
+      (list (list (list 'function-definition
 			function-info)
 		  (first
 		   (analyze-block (fourth function)
-				  (add-params-to-symbol-tables symbol-tables
-							       (third (variable-type function-info)))
+				  (allocate-stack-variables
+				   (add-params-to-symbol-tables
+				    symbol-tables
+				    (third (variable-type function-info)))
+				   'argument)
 				  (make-instance 'context
-						 :enclosing-function function-info))))
+						 :enclosing-function function-info)))
+		  (list 'function-end function-info))
 	    function-info))))
 
 (defun analyze-block (block symbol-tables context)
   (declare (type context context))
-  (let ((block-symbol-tables (cons (make-hash-table) symbol-tables)))
-    (list (list '(begin)
-		(mapcar (lambda (declaration-line)
-			  (let ((analyzed-line (analyze-declaration-line declaration-line
-									 block-symbol-tables
-									 'local)))
-			    (add-to-symbol-table block-symbol-tables (second analyzed-line))
-			    (first analyzed-line)))
-			(second block))
-		(mapcar (lambda (instruction-line)
-			  (let ((analyzed-line (analyze-instruction instruction-line
-								    block-symbol-tables
-								    context)))
-			    (setf block-symbol-tables (second analyzed-line))
-			    (first analyzed-line)))
-			(third block))
-		'(end))
-	  symbol-tables)))
+  (inc-blocks-count context)
+  (let* ((block-symbol-tables (cons (make-hash-table) symbol-tables))
+	 (result (list
+		  (list '(begin)
+			(mapcar (lambda (declaration-line)
+				  (let ((analyzed-line (analyze-declaration-line declaration-line
+										 block-symbol-tables
+										 'local)))
+				    (add-to-symbol-table block-symbol-tables (second analyzed-line))
+				    (first analyzed-line)))
+				(second block))
+			(mapcar (lambda (instruction-line)
+				  (let ((analyzed-line (analyze-instruction instruction-line
+									    (allocate-stack-variables
+									     block-symbol-tables
+									     'local)
+									    context)))
+				    (setf block-symbol-tables (second analyzed-line))
+				    (first analyzed-line)))
+				(third block))
+			'(end))
+		  symbol-tables)))
+    (dec-blocks-count context)
+    result))
 
 (defun analyze-instruction (instruction symbol-tables context)
   (case (value (first instruction))
@@ -247,7 +298,7 @@ or list of symbols."
       (list (list (first test-expression)
 		  '(test)
 		  '(clear-registers-counter)
-		  `(jump-if ne ,else-label)
+		  `(jump-if-ne ,else-label)
 		  (first if-instruction)
 		  `(jump ,end-label)
 		  `(insert-label ,else-label)
@@ -261,7 +312,7 @@ or list of symbols."
     (unless (equal (third expression) (second (variable-type (enclosing-function context))))
       (error "Types must be identical for now"))
     (list (list (first expression)
-		'(return))
+		`(return ,(enclosing-function context) ,(enclosing-blocks-count context)))
 	  symbol-tables)))
 
 (defun unsupported (&rest a)

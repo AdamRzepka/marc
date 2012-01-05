@@ -16,4 +16,5 @@
 			 (:file "type-control")
 			 (:file "semantic-analyzer")
 			 (:file "error-handler")
+			 (:file "code-generator")
 			 (:file "marc")))))
