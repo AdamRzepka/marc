@@ -132,12 +132,15 @@ or list of symbols."
 	  (format nil "Something strange passed to add-to-symbol-table: ~S." symbols))))
   symbol-tables)
 
+(defun add-start-symbol (instructions)
+  (cons `(start-symbol) instructions))
+
 (defun analyze-file (file)
   "FILE is a syntax tree created with build-syntax-tree"
   (let ((symbol-tables (list (make-hash-table)))
 	result)
-    (dolist (entry file (flatten-syntax-tree (nreverse result)))
-      (case (first entry)
+    (dolist (entry file (add-start-symbol (flatten-syntax-tree (nreverse result))))
+      (case (value (first entry))
 	(declaration-line
 	 (let ((declaration-list
 		(analyze-declaration-line entry symbol-tables 'global)))
@@ -152,25 +155,68 @@ or list of symbols."
 	   (add-to-symbol-table symbol-tables (second function))))
 	(t (unsupported (first entry)))))))
 
-(defun make-variable-info (base-type variable scope)
+(defun analyze-table-size (size-expression symbol-tables line)
+  (let ((analyzed-expression (analyze-expression size-expression symbol-tables)))
+    (cond
+      ((not (constp (third analyzed-expression)))
+       (with-simple-restart (continue "Ignore error")
+	 (error 'semantic-condition :line line
+		:description "Table size initializer must be constant expression."))
+       1)
+      ((not (find (second (third analyzed-expression)) +integer-types+))
+       (with-simple-restart (continue "Ignore error")
+	 (error 'semantic-condition :line line
+		:description "Table size initializer must be integer."))
+       1)
+      ((<= (second (first analyzed-expression)) 0)
+       (with-simple-restart (continue "Ignore error")
+	 (error 'semantic-condition :line line
+		:description "Table size initializer must be greater than 0."))
+       1)
+      (t
+       (second (first analyzed-expression))))))
+
+(defun make-variable-info (base-type variable scope line &optional symbol-tables)
   "Recursively adds *, [] or () to BASE-TYPE and creates variable-info instance"
   (if (listp variable)
       (case (value (first variable))
-	(* (make-variable-info (list '* base-type) (second variable) scope))
-	([] (make-variable-info (list '[] base-type (third variable))
-				(second variable) scope))
+	(* (make-variable-info (list '* base-type) (second variable) scope line symbol-tables))
+	([] (make-variable-info (list '[] base-type (analyze-table-size (third variable)
+									symbol-tables line))
+				(second variable) scope line symbol-tables))
 	(|()| (make-variable-info (list '|()| base-type
 					(mapcan (lambda (arg)
 						  (second
 						   (analyze-declaration-line
 						    (cons 'declaration-line arg) nil 'argument)))
 						(third variable)))
-				  (second variable) scope)))
-      (make-instance 'variable-info :name (value variable) :type base-type :scope scope)))
+				  (second variable) scope line symbol-tables)))
+      (progn
+	(when (types-equal (value base-type) 'void)
+	  (with-simple-restart (continue "Ignore error")
+	    (error 'semantic-condition :line line
+			     :description "Declaring void variable is forbidden."))
+	  (setf base-type 'int))
+	(make-instance 'variable-info :name (value variable) :type (value base-type) :scope scope))))
 
-(defun analyze-initializer (initializer type symbol-tables scope) ;TODO
-  (declare (ignore type symbol-tables scope))
-  initializer)
+(defun analyze-initializer (initializer variable symbol-tables scope) ;TODO
+  (when initializer
+    (let ((expression (analyze-expression initializer symbol-tables))
+	  (type (variable-type variable)))
+      (case scope
+	(global (if (constp (third expression))
+		    (second (auto-convert-types (first expression) (third expression)
+						type (line (first initializer))))
+		    (with-simple-restart (continue "Ignore error")
+		      (error 'semantic-condition :line (line (first initializer))
+			     :description "Global variable initializer must be constant."))))
+	(local
+	 
+	 (list (list 'load-local-address variable)
+	       (auto-convert-types (first expression) (third expression)
+				   type (line (first initializer)))
+	       (list (symbolicate '=- (target-type type)))
+	       (list 'clear-registers-counter)))))))
 
 (defun allocate-stack-variables (symbol-tables scope)
   (let ((next-address 0))
@@ -195,14 +241,27 @@ or list of symbols."
 
 (defun analyze-single-declaration (single-declaration base-type symbol-tables scope)
   "Analyzes single declaration like a=3. SINGLE-DECLARATION would be ('a 3) for example."
-  (let ((variable-info (make-variable-info (value base-type) (first single-declaration) scope)))
+  (let ((variable-info (make-variable-info (value base-type) (first single-declaration) scope
+					   (line (first single-declaration)))))
+    (when (find-symbol-in-local-table (name variable-info) symbol-tables)
+      (with-simple-restart (continue "Ignore error")
+		      (error 'semantic-condition :line (line (first single-declaration))
+			     :description (format nil "Identifier ~A already defined."
+						  (name variable-info)))))
     (list (unless (function-info-p variable-info)
-	    (list (symbolicate scope '-declaration)
-		  variable-info
-		  (analyze-initializer (second single-declaration)
-				       (variable-type variable-info)
-				       symbol-tables
-				       scope)))
+	    (if (eq scope 'local)
+		(list (list (symbolicate scope '-declaration)
+			    variable-info)
+		      (analyze-initializer (second single-declaration)
+					   variable-info
+					   symbol-tables
+					   scope))
+		(list (symbolicate scope '-declaration)
+		      variable-info
+		      (analyze-initializer (second single-declaration)
+					   variable-info
+					   symbol-tables
+					   scope))))
 	  variable-info)))
 
 (defun transpose-pairs-list (pairs)
@@ -226,7 +285,8 @@ or list of symbols."
   (flet ((add-params-to-symbol-tables (symbol-tables params)
 	   (add-to-symbol-table (cons (make-hash-table) symbol-tables)
 				params)))
-    (let ((function-info (make-variable-info (value (second function)) (third function) 'global)))
+    (let ((function-info (make-variable-info (value (second function)) (third function)
+					     'global (line (first function)))))
       (list (list (list 'function-definition
 			function-info)
 		  (first
@@ -298,7 +358,7 @@ or list of symbols."
       (list (list (first test-expression)
 		  '(test)
 		  '(clear-registers-counter)
-		  `(jump-if-ne ,else-label)
+		  `(jump-if-eq ,else-label)
 		  (first if-instruction)
 		  `(jump ,end-label)
 		  `(insert-label ,else-label)
@@ -308,10 +368,10 @@ or list of symbols."
 
 (defun analyze-return (syntax-subtree symbol-tables context)
   (let ((expression (analyze-expression (second syntax-subtree)
-					symbol-tables)))
-    (unless (equal (third expression) (second (variable-type (enclosing-function context))))
-      (error "Types must be identical for now"))
-    (list (list (first expression)
+					symbol-tables))
+	(function-type (second (variable-type (enclosing-function context)))))
+    (list (list (auto-convert-types (first expression) (third expression) function-type
+				    (line (first syntax-subtree)))
 		`(return ,(enclosing-function context) ,(enclosing-blocks-count context)))
 	  symbol-tables)))
 

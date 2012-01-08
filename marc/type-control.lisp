@@ -17,8 +17,16 @@
 	  (t type))))
 
 (defun get-base-type (type)
-  (if (and (listp type) (eq (first type) 'const))
+  (if (constp type)
       (second type)
       type))
 
-(defgeneric convert-type (source-type destination-type ))
+(defun make-const (type)
+  (if (constp type)
+      type
+      (list 'const type)))
+
+(defun constp (type)
+  (and (listp type)
+       (eq (first type) 'const)))
+
