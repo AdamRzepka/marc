@@ -33,7 +33,12 @@ int  main(int argc, char** argv)
 
   str[0] = 'a';
   t1[1] = 1;
-  
+
+  for (a = 0; a < 5; a++)
+    bb = bb + 2;
+
+  while (bb > 0)
+    --bb;
   
   if (a == 4)
   {

@@ -64,6 +64,7 @@
 		     :initform nil)
    (enclosing-blocks-count :type integer
 			   :accessor enclosing-blocks-count
+			   :initarg :enclosing-blocks-count
 			   :initform 0))
   (:documentation "For the return, break and continue purposes."))
 
@@ -333,15 +334,14 @@ or list of symbols."
 (defun analyze-instruction (instruction symbol-tables context)
   (case (value (first instruction))
     (new-block (analyze-block instruction symbol-tables context))
-    (expression (let ((expression (analyze-expression (second instruction)
-						      symbol-tables)))
+    (expression (let ((expression (analyze-expression (second instruction) symbol-tables)))
 		  (list (list (first expression)			      
 			      '(clear-registers-counter))
 			symbol-tables)))
     (if-else (analyze-if-else instruction symbol-tables context))
-    (for-loop instruction)
-    (while-loop instruction)
-    (do-loop instruction)
+    (for-loop (analyze-for-loop instruction symbol-tables context))
+    (while-loop (analyze-while-loop instruction symbol-tables context))
+    (do-loop instruction (analyze-do-loop instruction symbol-tables context))
     (return (analyze-return instruction symbol-tables context))
     (otherwise nil)))
 
@@ -367,6 +367,64 @@ or list of symbols."
 		  (first else-instruction)
 		  `(insert-label ,end-label))
 	    modified-symbol-tables))))
+
+(defun analyze-while-loop (syntax-subtree symbol-tables context)
+  (let ((start-label (genlabel))
+	(end-label (genlabel)))
+    (list
+     (list (list 'insert-label start-label)
+	   (first (analyze-expression (second syntax-subtree) symbol-tables))
+	   (list 'test)
+	   (list 'jump-if-eq end-label)
+	   (first (analyze-instruction (third syntax-subtree)
+				       symbol-tables
+				       (make-instance 'context
+						      :enclosing-function
+						      (enclosing-function context)
+						      :enclosing-blocks-count
+						      (enclosing-blocks-count context))))
+	   (list 'jump start-label)
+	   (list 'insert-label end-label))
+     symbol-tables)))
+
+(defun analyze-do-loop (syntax-subtree symbol-tables context)
+  (let ((start-label (genlabel)))
+    (list
+     (list (list 'insert-label start-label)
+	   (first (analyze-instruction (third syntax-subtree)
+				       symbol-tables
+				       (make-instance 'context
+						      :enclosing-function
+						      (enclosing-function context)
+						      :enclosing-blocks-count
+						      (enclosing-blocks-count context))))
+	   (first (analyze-expression (second syntax-subtree) symbol-tables))
+	   (list 'test)
+	   (list 'jump-if-ne start-label))
+     symbol-tables)))
+
+(defun analyze-for-loop (syntax-subtree symbol-tables context)
+  (let ((start-label (genlabel))
+	(end-label (genlabel)))
+    (unless (third syntax-subtree)
+      (setf (third syntax-subtree)
+	    (list 'int-literal 1)))
+    (list
+     (list (first (analyze-expression (second syntax-subtree) symbol-tables))
+	   (list 'insert-label start-label)
+	   (first (analyze-expression (third syntax-subtree) symbol-tables))
+	   (list 'test)
+	   (list 'jump-if-eq end-label)
+	   (first (analyze-instruction (fifth syntax-subtree)
+				       symbol-tables
+				       (make-instance 'context
+						      :enclosing-function
+						      (enclosing-function context)
+						      :enclosing-blocks-count
+						      (enclosing-blocks-count context))))
+	   (first (analyze-expression (fourth syntax-subtree) symbol-tables))
+	   (list 'insert-label end-label))
+     symbol-tables)))
 
 (defun analyze-return (syntax-subtree symbol-tables context)
   (let ((expression (analyze-expression (second syntax-subtree)

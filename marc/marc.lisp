@@ -20,8 +20,8 @@
     (with-open-file (ostream out :direction :output :if-exists :supersede)
 		   (format ostream 
 			   (result-to-string 
-			    (add-start-symbol
-			     (cadr (parse-file istream))))))))
+			    (generate-code
+			     (analyze-file (parse-file istream))))))))
 
 (defparameter *args* (or 
 		      #+SBCL (cdr sb-ext:*posix-argv*)  

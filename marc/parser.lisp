@@ -466,11 +466,11 @@
     (for \( expression-instr expression-instr expression \) instruction
 	 (lambda (a b expr1 expr2 expr3 c instruction)
 	   (declare (ignore a b c))
-	   (list 'for-loop expr1 expr2 expr3 instruction)))
+	   (list 'for-loop (second expr1) (second expr2) expr3 instruction)))
     (for \( expression-instr expression-instr \) instruction
 	 (lambda (a b expr1 expr2 c instruction)
 	   (declare (ignore a b c))
-	   (list 'for-loop expr1 expr2 instruction)))
+	   (list 'for-loop (second expr1) (second expr2) nil instruction)))
     (while \( expression \) instruction (lambda (a b expression c instruction)
 					  (declare (ignore a b c))
 					  (list 'while-loop expression instruction)))

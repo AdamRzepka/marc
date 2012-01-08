@@ -302,7 +302,7 @@
 (define-guard-function analyze-expression (syntax-subtree symbol-tables)
     ((eq (value (first syntax-subtree)) 'unary-&))
   (let ((child (analyze-expression (second syntax-subtree) symbol-tables)))
-    (list (pack-lvalue (value (first syntax-subtree)) (first child)
+    (list (pack-lvalue (value (first (second syntax-subtree))) (first child)
 		       (third child) (line (first syntax-subtree)))
 	  (second child)
 	  (list '* (third child)))))
@@ -324,7 +324,7 @@
 	  (second type))))			; type loses const (TODO?)
 
 (define-guard-function analyze-expression (syntax-subtree symbol-tables)
-    ((find (value (first syntax-subtree)) '(++ -- post++ post--)))
+    ((find (value (first syntax-subtree)) '(++ -- post-++ post---)))
   (let* ((child (analyze-expression (second syntax-subtree) symbol-tables))
 	 (type (third child)))
     (unless (or (find type +integer-types+)
@@ -335,11 +335,11 @@
 	       :description (format nil
 				    "Only integer types allowed with operator ~A."
 				    (value (first syntax-subtree))))))
-    (list (list (pack-lvalue (value (first syntax-subtree)) (first child) type
+    (list (list (pack-lvalue (value (first (second syntax-subtree))) (first child) type
 			     (line (first syntax-subtree)))
 		(list 'copy)
 		(list 'copy)
-		(list 'load)
+		(list (symbolicate 'load- (target-type type)))
 		(list 'literal-word (if (and (listp type)
 					     (eq (first type) '*))
 					(type-size (second type))
