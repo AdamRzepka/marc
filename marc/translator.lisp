@@ -210,12 +210,14 @@ or list of symbols."
 		    (with-simple-restart (continue "Ignore error")
 		      (error 'semantic-condition :line (line (first initializer))
 			     :description "Global variable initializer must be constant."))))
-	(local
-	 
+	(local	 
 	 (list (list 'load-local-address variable)
 	       (auto-convert-types (first expression) (third expression)
 				   type (line (first initializer)))
-	       (list (symbolicate '=- (target-type type)))
+	       (if (and (listp type) (eq (first type) '[]) (eq (second type) 'char))
+		   (list (list 'literal-word (type-size type))
+			 (list 'copy-object))
+		   (list (symbolicate '=- (target-type type))))
 	       (list 'clear-registers-counter)))))))
 
 (defun allocate-stack-variables (symbol-tables scope)

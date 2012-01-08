@@ -63,9 +63,13 @@
       (let ((str-number (string constant)))
 	(cond
 	  ((find type +float-types+) (read-from-string (string-right-trim "fFdDlL" str-number)))
-	  ((search "0x" str-number) (read-from-string
-				     (string-right-trim "uUlL"
-							(replace str-number "#" :end1 1))))
+	  ((or (search "0x" str-number)
+	       (search "0X" str-number)
+	       (eql (search "0b" str-number) 0)
+	       (eql (search "0B" str-number) 0))
+	   (read-from-string
+	    (string-right-trim "uUlL"
+			       (replace str-number "#" :end1 1))))
 	  ((eql (char str-number 0) #\0) (read-from-string
 					  (string-right-trim "uUlL"
 							     (concatenate 'string "#o" str-number))))
@@ -106,11 +110,13 @@
 				"\\d+([eE][+-]?\\d+)?[lL]"
 				"'(\\.|[^\\'])'" ; char
 				"L'(\\.|[^\\']){1,2}'" ; unsigned short (wchar_t)
-				"\\d+" "0[0-7]+" "0x|X[0-9A-Fa-f]+" ; integer
+				"\\d+\\b" "0[bB][01]+\\b" "0[0-7]+\\b" "0[xX][0-9A-Fa-f]+\\b" ; integer
 				"'(\\.|[^\\']){2,4}'"
-				"\\d+[uU]" "0[0-7]+[uU]" "0x|X[0-9A-Fa-f]+[uU]" ; unsigned
-				"\\d+[lL]" "0[0-7]+[lL]" "0x|X[0-9A-Fa-f]+[lL]" ; long
-				"\\d+[uU][lL]" "0[0-7]+[uU][lL]" ; unsigned long
+				"\\d+[uU]" "0[bB][01]+[uU]" "0[0-7]+[uU]"
+				"0[xX][0-9A-Fa-f]+[uU]" ; unsigned
+				"\\d+[lL]" "0[bB][01]+[lL]" "0[0-7]+[lL]"
+				"0[xX][0-9A-Fa-f]+[lL]" ; long
+				"\\d+[uU][lL]" "0[bB][01]+[uU][lL]" "0[0-7]+[uU][lL]" ; unsigned long
 				"0x|X[0-9A-Fa-f]+[uU][lL]" 
 				"\"(\\.|[^\\\"])*\"" ; char*
 				"L\"(\\.|[^\\\"])*\"") ; unsigned short* (wchar_t*)
@@ -119,11 +125,11 @@
 			    long-double long-double long-double
 			    char
 			    unsigned-short
-			    int int int
+			    int int int int
 			    int
-			    unsigned unsigned unsigned
-			    long long long
-			    unsigned-long unsigned-long 
+			    unsigned unsigned unsigned unsigned
+			    long long long long
+			    unsigned-long unsigned-long unsigned-long
 			    unsigned-long
 			    char*
 			    unsigned-short*)

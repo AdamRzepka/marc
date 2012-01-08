@@ -46,6 +46,7 @@
 				 literal-float
 				 literal-short
 				 literal-byte
+				 literal-char*
 				 save-registers
 				 load-registers
 				 |()|
@@ -97,6 +98,7 @@
 				 clear-registers-counter
 				 pop
 				 copy
+				 copy-object
 				 insert-label
 				 jump-if-ne
 				 jump-if-eq
@@ -254,6 +256,18 @@
 
 (defun generate-literal-byte (instruction stack-index)
   (generate-literal-word instruction stack-index))
+
+(defun generate-literal-char* (instruction stack-index)
+  (let ((skip-label (genlabel))
+	(string-label (genlabel)))
+    `(((|b| ,skip-label)
+       (|.data|)
+       (,(symbolicate string-label '\:))
+       (|.asciz| ,(second instruction))
+       (|.text|)
+       (,(symbolicate skip-label '\:))
+       (|ldr| ,(register stack-index) \, ,(symbolicate '= string-label)))
+      ,(1+ stack-index))))
 
 (defun generate-+-word (instruction stack-index)
   (declare (ignore instruction))
@@ -525,6 +539,10 @@
   `(((|mov| ,(register (1- stack-index)) \, ,(register stack-index)))
     ,(1+ stack-index)))
 
+(defun generate-copy-object (instruction stack-index)
+  (declare (ignore instruction))
+  (gas-function '|memcpy| stack-index 3))
+
 (defun generate-jump-if-ne (instruction stack-index)
   `(((|bne| ,(second instruction)))
     ,stack-index))
@@ -560,16 +578,16 @@
 (defun gas-function (function stack-index args-count)
   (list
    (append
-    (first (generate-save-registers nil (if (eq args-count 2)
-					    (- stack-index 2)
-					    (1- stack-index))))
-    (if (eq args-count 2)
-	`((|mov| |r0| \, ,(register (- stack-index 2)))
-	  (|mov| |r1| \, ,(register (1- stack-index)))
-	  (|bl| ,function))
-	`((|mov| |r0| \, ,(register (1- stack-index)))
-	  (|bl| ,function)))
+    (first (generate-save-registers nil (- stack-index args-count)))
+    ;; (if (eq args-count 2)
+    ;; 	`((|mov| |r0| \, ,(register (- stack-index 2)))
+    ;; 	  (|mov| |r1| \, ,(register (1- stack-index)))
+    ;; 	  (|bl| ,function))
+    ;; 	`((|mov| |r0| \, ,(register (1- stack-index)))
+    ;; 	  (|bl| ,function)))
+    (loop for i from 0 to (1- args-count)
+	 for j from args-count downto 1
+	 collecting `(|mov| ,(register i) \, ,(register (- stack-index j))))
+    `((|bl| ,function))
     (first (generate-load-registers nil 0)))
-   (if (eq args-count 2)
-       (1- stack-index)
-       stack-index)))
+   (- stack-index (1- args-count))))

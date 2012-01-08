@@ -70,12 +70,15 @@
 			 (eq (first base-destination) '*))
 		    (and (eq (second base-source) (second base-destination)) ; pointer to table
 			 (eq (first base-source) '*)
-			 (eq (first base-destination) '[]))))
-	   (and (listp base-destination)
-		(find (first base-destination) '(* []))
-		(find base-source +integer-types+)
-		(find operator '(+ -)))) ; pointer's artithmetic
+			 (eq (first base-destination) '[])))))
        (pack-with-type-conversion syntax-subtree base-source base-destination))
+      ((and (listp base-destination)
+	    (find (first base-destination) '(* []))
+	    (find base-source +integer-types+)
+	    (find operator '(+ -))) ; pointer's artithmetic
+       (list syntax-subtree
+	     (list 'literal-word (type-size (second base-destination)))
+	     (list '*-word)))
       (t (with-simple-restart (continue "Ignore type error")
 	   (error 'type-convert-condition :line line :source-type source-type
 		  :destination-type destination-type))))))
@@ -321,7 +324,7 @@
 	  (second type))))			; type loses const (TODO?)
 
 (define-guard-function analyze-expression (syntax-subtree symbol-tables)
-    ((find (value (first syntax-subtree)) '(++ --)))
+    ((find (value (first syntax-subtree)) '(++ -- post++ post--)))
   (let* ((child (analyze-expression (second syntax-subtree) symbol-tables))
 	 (type (third child)))
     (unless (or (find type +integer-types+)
@@ -337,7 +340,10 @@
 		(list 'copy)
 		(list 'copy)
 		(list 'load)
-		(list 'literal-word 1)
+		(list 'literal-word (if (and (listp type)
+					     (eq (first type) '*))
+					(type-size (second type))
+					1))
 		(if (eq (value (first syntax-subtree)) '++)
 		    (list '+-word)
 		    (list '--word))

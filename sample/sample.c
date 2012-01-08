@@ -1,4 +1,4 @@
-int a[3], b = 0;
+int a[3], b = 0x12a;
 int t[5];
 char str[5] = "asdf";
 float f1;
@@ -26,11 +26,13 @@ int g()
 int  main(int argc, char** argv)
 {
   int a = 4;
+  int bb = 0b0110;
   int t1[3];
   int t2[2];
+  char str2[5] = "asdf";
 
   str[0] = 'a';
-  str[1] = 1;
+  t1[1] = 1;
   
   
   if (a == 4)
