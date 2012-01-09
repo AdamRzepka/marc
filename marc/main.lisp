@@ -45,7 +45,7 @@
 	       #+SBCL (cdr sb-ext:*posix-argv*)  
 	       #+LISPWORKS system:*line-arguments-list*
 	       #+CMU extensions:*command-line-words*
-	       #+CLISP cl-user::*args*
+	       #+CLISP ext::*args*
 	       nil)))
     (case (length args)
       (0 (format t "Usage:~%carm SOURCE-FILE [OUTPUT-FILE]~%"))
@@ -53,7 +53,8 @@
 			 (replace (car args) ".s" 
 				  :start1 (position #\. (car args) 
 						    :from-end t))))
-      (2 (compile-c-file (car args) (cadr args))))))
+      (2 (compile-c-file (car args) (cadr args)))))
+  #+CLISP (ext:exit))
 
 (main)
 
