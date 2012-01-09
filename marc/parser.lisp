@@ -52,8 +52,6 @@
   (:report (lambda (c stream)
 	     (format stream "Line ~D: Forbiden character ~C" (line c) (sign c)))))
 
-(define-constant +float-types+ '(float double long-double) :test #'equal)
-
 (defun parse-constant (constant type)
   (if (find type '(char char* unsigned-short unsigned-short*)) ;TODO - characters
       (cond ((find type '(char unsigned-short))
