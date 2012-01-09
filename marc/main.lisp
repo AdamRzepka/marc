@@ -25,6 +25,7 @@
 		   (unsupported-construction #'handle-unsupported-construction))
       (let ((syntax-tree (build-syntax-tree (read-file-into-string in)))
 	    intermediate)
+	(print syntax-tree)
 	(when (= *errors-count* 0)
 	  (setf intermediate (analyze-file syntax-tree))
 	  (when (= *errors-count* 0)
@@ -42,19 +43,19 @@
 
 (defun main ()
   (let ((args (or 
-	       #+SBCL (cdr sb-ext:*posix-argv*)  
+	       #+SBCL (cdr sb-ext:*posix-argv*)
 	       #+LISPWORKS system:*line-arguments-list*
 	       #+CMU extensions:*command-line-words*
 	       #+CLISP ext::*args*
 	       nil)))
     (case (length args)
-      (0 (format t "Usage:~%carm SOURCE-FILE [OUTPUT-FILE]~%"))
-      (1 (compile-c-file (car args) 
-			 (replace (car args) ".s" 
-				  :start1 (position #\. (car args) 
-						    :from-end t))))
+      (0 1 (format t "Usage:~%carm SOURCE-FILE [OUTPUT-FILE]~%"))
+      ;; (1 (compile-c-file (car args) 
+      ;; 			 (replace (car args) ".s" 
+      ;; 				  :start1 (position #\. (car args) 
+      ;; 						    :from-end t))))
       (2 (compile-c-file (car args) (cadr args)))))
-  #+CLISP (ext:exit))
+  ;#+CLISP (ext:exit)
+  )
 
-(main)
 

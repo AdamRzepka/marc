@@ -1,4 +1,4 @@
-int a[3], b = 0x12a;
+int a[0], b = 0x12a;
 int t[5];
 char str[5] = "asdf";
 float f1;
