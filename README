@@ -2,9 +2,17 @@ Micro ARM Compiler
 Author: Adam Rzepka
 License: GNU GPLv3
 
+ Summary:
+
+C to ARM assembly language written in Common Lisp as a student project.
+In current version it supports only subset of C.
+It's not maintained anymore and it could have bugs.
+
+ Build:
+
 SBCL is required in order to build the project (CLISP should work too, but it wasn't tested).
 
-Building:
+In order to build the project, run:
 make
 
 You can also run appropriate script in build/ directory:
