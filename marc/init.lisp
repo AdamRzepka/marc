@@ -2,4 +2,4 @@
 
 (defpackage :marc 
 	    (:use :common-lisp :yacc :cl-lex :cl-ppcre :alexandria)
-	    (:export :parse-file :compile-c-file :main))
+	    (:export :main :compile-c-file :generate-code :analyze-file :build-syntax-tree))

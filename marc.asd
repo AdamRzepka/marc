@@ -10,8 +10,12 @@
 			:serial t
 			:components
 			((:file "init")
-			 (:file "translator")
-			 (:file "parser")
 			 (:file "utils")
+			 (:file "symbol-tables")
+			 (:file "types")
+			 (:file "parser")
+			 (:file "expression-analyzer")
+			 (:file "semantic-analyzer")
+			 (:file "code-generator")
 			 (:file "error-handler")
-			 (:file "marc")))))
+			 (:file "main")))))

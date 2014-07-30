@@ -1,4 +1,4 @@
-;;; Lexer and parser definitions.
+;;;; Lexer and parser definitions.
 
 (in-package :marc)
 
@@ -13,7 +13,7 @@
  (define-constant +tokens+ '((char double do else float for if int long return 
 			  short sizeof void while)
 			 (<= >= == != \; { } \, = \( \) [ ] ! ~ -- ++ - + * /
-			  % < > ^ \|\| \&\& \| \&)
+			  % < > ^ \|\| \&\& \| \& |...|)
 			 (identifier constant string)) :test #'equal))
 
 (defclass token-info ()
@@ -25,11 +25,54 @@
 	 :initarg :line))
   (:documentation "It holds token value and some additional info (line number for now)."))
 
+(defgeneric change-token-value (token value))
+
+(defmethod change-token-value ((token token-info) value)
+  (make-instance 'token-info :value value :line (line token)))
+
+(defmethod value ((n symbol))
+  n)
+
+(defmethod value ((n (eql nil)))
+  0)
+
+(defmethod value (n)
+  n)
+
+(defmethod line (n)
+  'unknown)
+
+(defmethod print-object ((object token-info) stream)
+  (print-unreadable-object (object stream)
+    (format stream "~s" (value object))))
+
 (define-condition lexer-error (error)
   ((sign :initarg :sign :reader sign)
    (line :initarg :line :reader line))
   (:report (lambda (c stream)
 	     (format stream "Line ~D: Forbiden character ~C" (line c) (sign c)))))
+
+(defun parse-constant (constant type)
+  (if (find type '(char char* unsigned-short unsigned-short*)) ;TODO - characters
+      (cond ((find type '(char unsigned-short))
+	     (string-right-trim "'" (string constant)))
+	    ((find type '(char* unsigned-short*))
+	     (string constant)))  
+      (let ((str-number (string constant)))
+	(cond
+	  ((find type +float-types+) (read-from-string (string-right-trim "fFdDlL" str-number)))
+	  ((or (search "0x" str-number)
+	       (search "0X" str-number)
+	       (eql (search "0b" str-number) 0)
+	       (eql (search "0B" str-number) 0))
+	   (read-from-string
+	    (string-right-trim "uUlL"
+			       (replace str-number "#" :end1 1))))
+	  ((eql (char str-number 0) #\0) (read-from-string
+					  (string-right-trim "uUlL"
+							     (concatenate 'string "#o" str-number))))
+	  (t (read-from-string (string-right-trim "uUlL" str-number)))))))
+
 
 (defmacro create-c-lexer (name)
   `(let ((line-number 1))
@@ -49,14 +92,56 @@
 			   'identifier 
 			   (make-instance 'token-info
 					  :value
-					  (intern 
-					   (regex-replace-all "_" $@ "-"))
+					  (intern $@ :marc) 
+;					  (regex-replace-all "_" $@ "-")
 					  :line line-number))))
        ;; literals (integers, floats and characters)
-       ,@(loop for pattern in '("\\d+[uUlL]?" "0[0-7]+[uUlL]?" "0x|X[0-9A-Fa-f]+[uUlL]?"
+       ;; TODO: implement numeric escape sequences
+       ,@(loop for pattern in '("\\d*\\.\\d+([eE][+-]?\\d+)?[fF]" ; float
+				"\\d+\\.\\d*([eE][+-]?\\d+)?[fF]"
+				"\\d+([eE][+-]?\\d+)?[fF]"
+				"\\d*\\.\\d+([eE][+-]?\\d+)?" ; double
+				"\\d+\\.\\d*([eE][+-]?\\d+)?"
+				"\\d+[eE][+-]?\\d+"
+				"\\d*\\.\\d+([eE][+-]?\\d+)?[lL]" ; long double
+				"\\d+\\.\\d*([eE][+-]?\\d+)?[lL]"
+				"\\d+([eE][+-]?\\d+)?[lL]"
+				"'(\\.|[^\\'])'" ; char
+				"L'(\\.|[^\\']){1,2}'" ; unsigned short (wchar_t)
+				"\\d+\\b" "0[bB][01]+\\b" "0[0-7]+\\b" "0[xX][0-9A-Fa-f]+\\b" ; integer
+				"'(\\.|[^\\']){2,4}'"
+				"\\d+[uU]" "0[bB][01]+[uU]" "0[0-7]+[uU]"
+				"0[xX][0-9A-Fa-f]+[uU]" ; unsigned
+				"\\d+[lL]" "0[bB][01]+[lL]" "0[0-7]+[lL]"
+				"0[xX][0-9A-Fa-f]+[lL]" ; long
+				"\\d+[uU][lL]" "0[bB][01]+[uU][lL]" "0[0-7]+[uU][lL]" ; unsigned long
+				"0x|X[0-9A-Fa-f]+[uU][lL]" 
+				"\"(\\.|[^\\\"])*\"" ; char*
+				"L\"(\\.|[^\\\"])*\"") ; unsigned short* (wchar_t*)
+	      for type in '(float float float
+			    double double double
+			    long-double long-double long-double
+			    char
+			    unsigned-short
+			    int int int int
+			    int
+			    unsigned unsigned unsigned unsigned
+			    long long long long
+			    unsigned-long unsigned-long unsigned-long
+			    unsigned-long
+			    char*
+			    unsigned-short*)
+	    collecting `(,pattern 
+			 (return (values 
+				  ',(symbolicate type '-literal)
+				  (make-instance 'token-info
+						 :value (parse-constant (intern $@ :marc) ',type)
+						 :line line-number)))))
+
+       #|,@(loop for pattern in '("\\d*\\.\\d+([eE][+-]?\\d+)?[fFlL]?" 
 				"\\d+\\.\\d*([eE][+-]?\\d+)?[fFlL]?"
-				"\\d*\\.\\d+([eE][+-]?\\d+)?[fFlF]?" 
-				"\\d+([eE][+-]?\\d+)?[fFlF]?"
+				"\\d+([eE][+-]?\\d+)?[fFlL]?"
+				"\\d+[uUlL]?" "0[0-7]+[uUlL]?" "0x|X[0-9A-Fa-f]+[uUlL]?"
 				"L?'(\\.|[^\\'])+'")
 	    collecting `(,pattern 
 			 (return (values 
@@ -67,13 +152,13 @@
        ;; string literals
        ("L?\"(\\.|[^\\\"])*\"" (return 
 				 (values 'string (make-instance 'token-info
-								:value (intern $@)
-								:line line-number))))
+								:value (intern $@ :marc)
+								:line line-number))))|#
        ;; end of line
        ("\\n" (incf line-number))
        ;;other characters
        ("\\S" (with-simple-restart (continue "Continue reading input.")
-	      (error 'lexer-error :sign (character $@) :line line-number))))))
+		(error 'lexer-error :sign (character $@) :line line-number))))))
 
 (defun c-stream-lexer (stream lexer-fun)
   (labels ((reload-closure (stream) 
@@ -100,230 +185,300 @@
 ;;; cl-yacc parser
 (define-parser *c-parser*
   (:muffle-conflicts t)
-  (:start-symbol file)
+  (:start-symbol source)
   (:terminals (char double do else float for if int long return 
-	      short sizeof void while identifier constant
-	      string << >> ++ -- \&\& \|\| <= >= == != \; { }
-	      \, = \( \) [ ] ! ~ - + * / % < > ^ \|))
+	      short sizeof void while identifier float-literal double-literal
+	      long-double-literal char-literal unisgned-short-literal int-literal
+	      unsigned-literal long-literal unsigned-long-literal char*-literal
+	      unsigned-short*-literal << >> ++ -- \&\& \|\| <= >= == != \; { }
+	      \, = \( \) [ ] ! ~ - + * / % < > ^ \| |...|))
   (:precedence ((:left * / %) (:left + -) (:left << >>)
                (:left < > <= >=) (:left == !=) (:left &)
                (:left ^) (:left \|) (:left \&\&) (:left \|\|)
                (:right =) (:left \,) (:nonassoc if else)))
 
+  (source
+    (file #'nreverse))
+
   (file 
-    (declaration-line (lambda (declaration-line)
-			(list declaration-line
-			      (gen-global-variables 
-			       declaration-line))))
-    (file declaration-line (lambda (file declaration-line)
-			     (list (append 
-				    (car file)
-				    declaration-line)
-				   (append 
-				    (cadr file)
-				    (gen-global-variables
-				     declaration-line)))))
-    (function (lambda (function) 
-                      (list (car function) 
-			    (substitute-globals 
-			     (car function) (cadr function)))))
-    (file function (lambda (file function)
-		     (let ((symbol-list 
-			    (append (car file)
-				    (car function))))
-		       (list symbol-list 
-			     (append (cadr file)
-				     '(())
-				     (substitute-globals 
-				      symbol-list 
-				      (cadr function))))))))
+    (declaration-line)
+    (file declaration-line #'rcons)
+    (function)
+    (file function #'rcons))
   
   (declaration-line
     (declaration \; (lambda (a b) (declare (ignore b)) a)))
 
   (declaration
-    (type var-init-list #'set-type))
+    (type var-init-list (lambda (a b) 
+			  (list (make-instance
+				 'token-info
+				 :value 'declaration-line
+				 :line (line a)) a (nreverse b)))))
   
   (var-init-list
-    (var-init-list \, var-init #'skip-and-append)
-    var-init)
+    (var-init-list \, var-init #'skip-and-rcons)
+    (var-init))
   
   (var-init
-    (pointer-declarator = initializer #'unsupported)
+    (pointer-declarator = initializer (lambda (a b c) 
+					(declare (ignore b)) 
+					(list a c)))
     (pointer-declarator))
 
   (pointer-declarator
     declarator
-    (pointer declarator (lambda (pointer declarator)
-			  (declare (ignore pointer))
-			  declarator)))
+    (* pointer-declarator))
   
   (declarator
-    (identifier (lambda (identifier) 
-		  (make-symbol-info :name identifier))) 
-    (\( declarator \))
-    (declarator [ expression ] #'unsupported)
-    (declarator [ ] #'unsupported)
-    (declarator \( param-list \) #'set-function)
-    (declarator \( \) #'set-function))
-  
-  (pointer
-    (* #'unsupported)
-    (pointer * #'unsupported))
-  
+    identifier 
+    (\( pointer-declarator \) (lambda (a b c)
+			(declare (ignore a c)) b))
+    (declarator [ expression ] (lambda (a b c d)
+				 (declare (ignore b d))
+				 (list '|[]| a c)))
+    (declarator [ ] (lambda (a b c)
+		      (declare (ignore a b c))
+		      (unsupported "Automatic table size detection")) ;; (lambda (a b c)
+		;;   (declare (ignore b c))
+		;; (list '|[]| a)
+		      )
+    (declarator \( param-list \) (lambda (a b c d)
+				   (declare (ignore b d))
+				   (list '|()| a (nreverse c))))
+    (declarator \( \) (lambda (a b c)
+			(declare (ignore b c))
+			(list '|()| a))))
+    
   (initializer
-    ({ initializer-list })
+    ({ initializer-list } (lambda (a b c)
+			    (declare (ignore a c))
+			    (cons '{} (nreverse b))))
     expression)
   
   (initializer-list
-    (initializer-list \, initializer))
+    (initializer)
+    (initializer-list \, initializer #'skip-and-rcons))
   
   (function
-    (type pointer-declarator block #'gen-function))
+    (type pointer-declarator block (lambda (a b c)
+				     (list (make-instance
+					    'token-info :value 'function-definition
+					    :line (line a)) a b c))))
   
-  (type 
+  (type
     char
-    (double #'unsupported)
-    (float #'unsupported)
+    double
+    float
     int
     long
     short
     void)
-  
+
   (param-list
-    (param-list \, parameter #'skip-and-append)
-    parameter)
+    (param-list \, parameter #'skip-and-rcons)
+    (param-list \, |...| (lambda (a b c)
+			   (declare (ignore b c))
+			   (cons `(|...| ((|...|))) a)))
+    (parameter))
 
   (parameter
-    (type var-init #'set-type))
+    (type var-init (lambda (a b) (list a (list b)))))
   
   (block
-    ({ } (lambda (a b) (declare (ignore a b)) '()))
-    ({ instruction-list } (lambda (a b c) (declare (ignore a c)) (list '() b)))
-    ({ declaration-list } (lambda (a b c) (declare (ignore a c)) (list b '())))
+    ({ } (lambda (a b) (declare (ignore a b)) '(new-block)))
+    ({ instruction-list } (lambda (a b c)
+			    (declare (ignore a c)) (list 'new-block '() (nreverse b))))
+    ({ declaration-list } (lambda (a b c)
+			    (declare (ignore a c)) (list 'new-block (nreverse b) '())))
     ({ declaration-list instruction-list } 
-       (lambda (a b c d) (declare (ignore a d)) (list b c))))
+       (lambda (a b c d) (declare (ignore a d)) (list 'new-block
+						      (nreverse b) (nreverse c)))))
   
   (declaration-list
-    declaration-line
-    (declaration-list declaration-line #'append-line))
+    (declaration-line)
+    (declaration-list declaration-line #'rcons))
   
   (instruction-list
-    (instruction-list instruction #'append-line)
-    instruction)
+    (instruction-list instruction #'rcons)
+    (instruction))
   
   (instruction
-    (block #'gen-block) 
+    block 
     expression-instr
     conditional
     loop
-    (return expression \; (lambda (r expression s)
-			    (declare (ignore r s))
-			    (gen-expression expression)))
+    (return expression \; (lambda (a b c)
+			    (declare (ignore c))
+			    (list a b)))
     (return \; (lambda (a b)
-		 (declare (ignore a b))
-		 nil)))
+		 (declare (ignore b))
+		 (list a))))
   
   (expression-instr
     (\; (lambda (a)
 	  (declare (ignore a))
 	  nil))
-    (expression \; (lambda (expression s) 
-		     (declare (ignore s))
-		     (gen-expression expression))))
+    (expression \; (lambda (a b) 
+		     (declare (ignore b))
+		     (list 'expression a))))
   
-  ;; Pomimo, iz ponizsza produkcja wprowadza niejednoznacznosc,
-  ;; jest ona dopuszczalna, dzieki zdefiniowaniu priorytetow
-  ;; operatorow.
+
   (expression
     cast-expression
-    (expression * expression #'to-onp)
-    (expression / expression #'unsupported)
-    (expression % expression #'unsupported)
-    (expression + expression #'to-onp)
-    (expression - expression #'to-onp)
-    (expression << expression  #'unsupported)
-    (expression >> expression #'unsupported)
-    (expression > expression #'to-onp)
-    (expression < expression #'to-onp)
-    (expression >= expression #'to-onp)
-    (expression <= expression #'to-onp)
-    (expression == expression #'to-onp)
-    (expression != expression #'to-onp)
-    (expression & expression  #'unsupported)
-    (expression ^ expression  #'unsupported)
-    (expression \| expression  #'unsupported)
-    (expression \&\& expression  #'unsupported)
-    (expression \|\| expression  #'unsupported)
-    (unary-expression = expression 
-		      (lambda (a b c)
-			(append c a (list b))))
-    (expression \, expression #'to-onp))
+    (expression * expression #'to-pn)
+    (expression / expression #'to-pn)
+    (expression % expression #'to-pn)
+    (expression + expression #'to-pn)
+    (expression - expression #'to-pn)
+    (expression << expression  #'to-pn)
+    (expression >> expression #'to-pn)
+    (expression > expression #'to-pn)
+    (expression < expression #'to-pn)
+    (expression >= expression #'to-pn)
+    (expression <= expression #'to-pn)
+    (expression == expression #'to-pn)
+    (expression != expression #'to-pn)
+    (expression & expression  #'to-pn)
+    (expression ^ expression  #'to-pn)
+    (expression \| expression  #'to-pn)
+    (expression \&\& expression  #'to-pn)
+    (expression \|\| expression  #'to-pn)
+    (unary-expression = expression #'to-pn)
+    (expression \, expression #'to-pn))
+
+  (cast-type
+   type
+   (cast-type * (lambda (a b)
+		  (list b a)))
+   (fun-pointer-type (lambda (a)
+		       (declare (ignore a))
+		       (unsupported "Cast to pointer to function"))))
+
+  (fun-pointer-type
+   (cast-type \( * \) \( cast-type-param-list \)))
+
+  (cast-type-param-list
+    cast-type
+    (cast-type-param-list \, cast-type))
   
   (cast-expression
     unary-expression
-    (\( type \) cast-expression #'unsupported))
+    (\( cast-type \) cast-expression (lambda (a b c d)
+				  (declare (ignore c))
+				  (list (change-token-value a 'type-cast) d b))))
   
   (unary-expression
     postfix-expression
-    (++ unary-expression #'unsupported)
-    (-- unary-expression #'unsupported)
+    (++ unary-expression)
+    (-- unary-expression)
     (+ cast-expression (lambda (a b) 
 			 (declare (ignore a))
 			 b))
-    (- cast-expression #'unsupported;(lambda (a b) (append b (list 'un-)))
-       )
-    (* cast-expression #'unsupported;(lambda (a b) (append b (list 'un*)))
-       )
-    (& cast-expression #'unsupported;(lambda (a b) (append b (list 'un&)))
-       )
-    (! cast-expression #'unsupported;#'swap
-       )
-    (~ cast-expression #'unsupported;#'swap
-       )
-    (sizeof unary-expressiion #'unsupported)
-    (sizeof \( lvalue \) #'unsupported))
-  
+    (- cast-expression (lambda (a b)
+			 (list (change-token-value a 'unary--) b)))
+    (* cast-expression (lambda (a b)
+			 (list (change-token-value a 'unary-*) b)))
+    (& cast-expression (lambda (a b)
+			 (list (change-token-value a 'unary-&) b)))
+    (! cast-expression)
+    (~ cast-expression)
+    (sizeof unary-expression)
+    (sizeof \( cast-type \) (lambda (a b c d)
+			      (declare (ignore b d)) (list a c))))
+
   (postfix-expression
     (postfix-expression \( expression \) 
 			(lambda (a b c d) 
-			  (declare (ignore b d))			    
-			  (append '(fun-start) c '(|()|) a)))
+			  (declare (ignore d))			    
+			  (list (change-token-value b '|()|) a c)))
     (postfix-expression \( \) (lambda (a b c)
-				(declare (ignore b c))
- 				(append a (list '|()|))))
-    (postfix-expression [ expression ] 
-			#'unsupported)
-    (postfix-expression ++ #'unsupported)
-    (postfix-expression -- #'unsupported)
+				(declare (ignore c))
+ 				(list (change-token-value b '|()|) a)))
+    (postfix-expression [ expression ] (lambda (a b c d)
+					 (declare (ignore d))
+					 (list (make-instance 'token-info
+							      :line (line b)
+							      :value 'unary-*)
+					       (list (make-instance 'token-info
+								    :line (line b)
+								    :value '+) a c))))
+    (postfix-expression ++ (lambda (a b)
+			     (list (change-token-value b 'post-++) a)))
+    (postfix-expression -- (lambda (a b)
+			     (list (change-token-value b 'post---) a)))
     highest-expression)
     
-  #|(argument-list
-    expression
-    (argument-list \, expression #'skip-and-append))|#
-  
   (highest-expression
-    (identifier (lambda (name) (list 'symbol name)))
-    (constant (lambda (value) (list 'constant value)))
-    (string-literal #'unsupported;(lambda (string) (list 'string string))
-     )
+    (identifier (lambda (a) (list (make-instance 'token-info
+						 :line (line a)
+						 :value 'var-name) a)))
+    (float-literal (lambda (a) (list (make-instance 'token-info
+						    :line (line a)
+						    :value 'float-literal) a)))
+    (double-literal (lambda (a) (list (make-instance 'token-info
+						     :line (line a)
+						     :value 'double-literal) a)))
+    (long-double-literal (lambda (a) (list (make-instance 'token-info
+							  :line (line a)
+							  :value 'long-double-literal) a)))
+    (char-literal (lambda (a) (list (make-instance 'token-info
+						   :line (line a)
+						   :value 'char-literal) a)))
+    (unsigned-short-literal (lambda (a) (list (make-instance 'token-info
+							     :line (line a)
+							     :value 'unsigned-short-literal) a)))
+    (int-literal (lambda (a) (list (make-instance 'token-info
+						  :line (line a)
+						  :value 'int-literal) a)))
+    (unsigned-literal (lambda (a) (list (make-instance 'token-info
+						       :line (line a)
+						       :value 'unsigned-literal) a)))
+    (long-literal (lambda (a) (list (make-instance 'token-info
+						   :line (line a)
+						   :value 'long-literal) a)))
+    (unsigned-long-literal (lambda (a) (list (make-instance 'token-info
+							    :line (line a)
+							    :value 'unsigned-long-literal) a)))
+    (char*-literal (lambda (a) (list (make-instance 'token-info
+						    :line (line a)
+						    :value 'char*-literal) a)))
+    (unsigned-short*-literal (lambda (a) (list (make-instance 'token-info
+							      :line (line a)
+							      :value 'unsigned-short*-literal) a)))
     (\( expression \) (lambda (a b c)
 			(declare (ignore a c))
 			b)))
     
   (conditional
     (if \( expression \) instruction else instruction
-	(lambda (t1 t2 expression t3 instr-if t4 instr-else)
-	  (declare (ignore t1 t2 t3 t4))
-	  (gen-if expression instr-if instr-else)))
+	(lambda (a b expression c instr-if d instr-else)
+	  (declare (ignore a b c d))
+	  (list 'if-else expression instr-if instr-else)))
     (if \( expression \) instruction
-	(lambda (t1 t2 expression t3 instr-if)
-	  (declare (ignore t1 t2 t3))
- 	  (gen-if expression instr-if))))
+	(lambda (a b expression c instr-if)
+	  (declare (ignore a b c))
+ 	  (list 'if-else expression instr-if))))
     
-  (repeat
-    (for \( expression-instr expression-instr expression \) instruction)
-    (for \( expression-instr expression-instr \) instruction)
-    (while \( expression \) instruction)
-    (do instruction while \( expression \) \; #'unsupported)))
+  (loop
+    (for \( expression-instr expression-instr expression \) instruction
+	 (lambda (a b expr1 expr2 expr3 c instruction)
+	   (declare (ignore a b c))
+	   (list 'for-loop (second expr1) (second expr2) expr3 instruction)))
+    (for \( expression-instr expression-instr \) instruction
+	 (lambda (a b expr1 expr2 c instruction)
+	   (declare (ignore a b c))
+	   (list 'for-loop (second expr1) (second expr2) nil instruction)))
+    (while \( expression \) instruction (lambda (a b expression c instruction)
+					  (declare (ignore a b c))
+					  (list 'while-loop expression instruction)))
+    (do instruction while \( expression \) \;
+      (lambda (a instruction b c expression d e)
+	(declare (ignore a b c d e))
+	(list 'do-loop expression instruction)))))
 
+
+(defun build-syntax-tree (source)
+  (declare (type string source))
+  (create-c-lexer c-lexer)
+  (parse-with-lexer (c-lexer source) *c-parser*))
