@@ -92,7 +92,7 @@
 			   'identifier 
 			   (make-instance 'token-info
 					  :value
-					  (intern $@) 
+					  (intern $@ :marc) 
 ;					  (regex-replace-all "_" $@ "-")
 					  :line line-number))))
        ;; literals (integers, floats and characters)
@@ -135,7 +135,7 @@
 			 (return (values 
 				  ',(symbolicate type '-literal)
 				  (make-instance 'token-info
-						 :value (parse-constant (intern $@) ',type)
+						 :value (parse-constant (intern $@ :marc) ',type)
 						 :line line-number)))))
 
        #|,@(loop for pattern in '("\\d*\\.\\d+([eE][+-]?\\d+)?[fFlL]?" 
@@ -152,7 +152,7 @@
        ;; string literals
        ("L?\"(\\.|[^\\\"])*\"" (return 
 				 (values 'string (make-instance 'token-info
-								:value (intern $@)
+								:value (intern $@ :marc)
 								:line line-number))))|#
        ;; end of line
        ("\\n" (incf line-number))

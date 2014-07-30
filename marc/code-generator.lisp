@@ -573,7 +573,7 @@
   (symbolicate '|r| (princ-to-string number)))
 
 (defun symbol-downcase (symbol)
-  (intern (string-downcase (string symbol))))
+  (intern (string-downcase (string symbol)) :marc))
 
 (defun gas-function (function stack-index args-count)
   (list

@@ -1,0 +1,14 @@
+Micro ARM Compiler
+Author: Adam Rzepka
+License: GNU GPLv3
+
+SBCL is required in order to build the project (CLISP should work too, but it wasn't tested).
+
+Building:
+make
+
+You can also run appropriate script in build/ directory:
+sbcl --script build/sbcl.lisp
+
+or for CLISP:
+clisp build/clisp.lisp
